@@ -6,12 +6,13 @@ run_path=../eval/data # Path to the folder where the graph and config file will 
 config_file=config.ini
 cp $graph $config_file $run_path
 
-env_python=~/miniconda3/envs/decpy/bin/python3 # Path to python executable of the environment | conda recommended
+# env_python=~/miniconda3/envs/decpy/bin/python3 # Path to python executable of the environment | conda recommended
+env_python=~/.local/share/virtualenvs/decentralizepy-Ewz13z8M/bin/python
 machines=1 # number of machines in the runtime
 iterations=80
 test_after=20
 eval_file=$decpy_path/testing.py # decentralized driver code (run on each machine)
-log_level=INFO # DEBUG | INFO | WARN | CRITICAL
+log_level=DEBUG #INFO # DEBUG | INFO | WARN | CRITICAL
 
 m=0 # machine id corresponding consistent with ip.json
 echo M is $m
