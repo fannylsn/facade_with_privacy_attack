@@ -7,7 +7,8 @@ config_file=config.ini
 cp $graph $config_file $run_path
 
 # env_python=~/miniconda3/envs/decpy/bin/python3 # Path to python executable of the environment | conda recommended
-env_python=~/.local/share/virtualenvs/decentralizepy-Ewz13z8M/bin/python
+# env_python=~/.local/share/virtualenvs/decentralizepy-Ewz13z8M/bin/python
+env_python=/home/thiba/code/.venv/decentralizepy_env/bin/python
 machines=1 # number of machines in the runtime
 iterations=80
 test_after=20
