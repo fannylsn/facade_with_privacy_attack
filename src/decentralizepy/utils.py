@@ -60,20 +60,22 @@ def get_args():
 
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("-mid", "--machine_id", type=int, default=0)
+    default_machine_id = 0
+    parser.add_argument("-mid", "--machine_id", type=int, default=default_machine_id)
     parser.add_argument("-ps", "--procs_per_machine", type=int, default=1, nargs="+")
     parser.add_argument("-ms", "--machines", type=int, default=1)
+    default_log_dir = f"eval/data/{datetime.datetime.now().strftime('%Y-%m-%dT%H:%M')}/machine{default_machine_id}"
     parser.add_argument(
         "-ld",
         "--log_dir",
         type=str,
-        default="./{}".format(datetime.datetime.now().isoformat(timespec="minutes")),
+        default=default_log_dir,
     )
     parser.add_argument(
         "-wsd",
         "--weights_store_dir",
         type=str,
-        default="./{}_ws".format(datetime.datetime.now().isoformat(timespec="minutes")),
+        default=default_log_dir,
     )
     parser.add_argument("-is", "--iterations", type=int, default=1)
     parser.add_argument("-cf", "--config_file", type=str, default="config.ini")
