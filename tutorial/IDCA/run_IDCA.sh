@@ -1,19 +1,22 @@
 #!/bin/bash
 
-decpy_path=../eval # Path to eval folder
+# RUN it from the root folder of the project
+
+decpy_path=./eval # Path to eval folder
 graph=regular_16.txt # Absolute path of the graph file generated using the generate_graph.py script
-run_path=../eval/data # Path to the folder where the graph and config file will be copied and the results will be stored
+run_path=./eval/data # Path to the folder where the graph and config file will be copied and the results will be stored
 config_file=config.ini
-cp $graph $config_file $run_path
+script_path=./tutorial/IDCA # Path to the folder where the run_IDCA.sh is located
+cp $script_path/$graph $script_path/$config_file $run_path
 
 # env_python=~/miniconda3/envs/decpy/bin/python3 # Path to python executable of the environment | conda recommended
 # env_python=~/.local/share/virtualenvs/decentralizepy-Ewz13z8M/bin/python
-env_python=~/code/decentralizepy/.venv/decentralizepy_env/bin/python
+env_python=./.venv/decentralizepy_env/bin/python
 machines=1 # number of machines in the runtime
 iterations=80
-test_after=20
-eval_file=$decpy_path/testing.py # decentralized driver code (run on each machine)
-log_level=DEBUG #INFO # DEBUG | INFO | WARN | CRITICAL
+test_after=2
+eval_file=$decpy_path/testingIDCA.py # decentralized driver code (run on each machine)
+log_level=INFO #INFO # DEBUG | INFO | WARN | CRITICAL
 
 m=0 # machine id corresponding consistent with ip.json
 echo M is $m
