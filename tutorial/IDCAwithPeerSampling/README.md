@@ -9,3 +9,5 @@ python tutorial/IDCA/download_MNIST_dataset.py
 ./tutorial/IDCA/run_IDCA.sh
 ```
 logs in eval/data/<date-time>
+
+if get zmq error -> port probably full, change offset in config

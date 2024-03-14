@@ -265,7 +265,6 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
 
 def plot_cluster_model_evolution(folder_path, results):
-    """REFACTOR"""
     plt.figure(7)
     data = [
         (x["cluster_assigned"], int(k), v)
@@ -273,14 +272,18 @@ def plot_cluster_model_evolution(folder_path, results):
         for k, v in x["test_best_model_idx"].items()
     ]
     clusters = set([x[0] for x in data])
+    models = set([x[2] for x in data])
+    max_iter = max([el[1] for el in data])
+    space_iter = data[1][1] - data[0][1]
+    init_iter = data[0][1]
     _, axs = plt.subplots(len(clusters), 1)
     for i, cluster in enumerate(clusters):
         cluster_data = [x for x in data if x[0] == cluster]
-        for model in set([x[2] for x in cluster_data]):
+        for model in models:
             model_data = [x for x in cluster_data if x[2] == model]
             # count = sorted(Counter(model_data), key=lambda x: x[1])
             count = sorted(Counter(model_data).items(), key=lambda pair: pair[0][1])
-            for j in range(2, 80 + 1, 2):
+            for j in range(init_iter, max_iter + 1, space_iter):
                 if j not in [elem[0][1] for elem in count]:
                     count.append(((cluster, j, model), 0))
             count = sorted(count, key=lambda pair: pair[0][1])
@@ -290,9 +293,11 @@ def plot_cluster_model_evolution(folder_path, results):
                 label=f"model {model}",
             )
         axs[i].set_ylim(ymin=0)
-        axs[i].set_xticks(np.arange(0, max([el[0][1] for el in count]) + 1, 10))
+        axs[i].set_xticks(np.arange(0, max_iter + 1, 10))
         axs[i].title.set_text(f"Cluster {cluster} Data Distribution")
         axs[i].legend(loc="upper right", fontsize="8")
+        axs[i].set_ylabel("Nodes")
+    axs[i].set_xlabel("Communication Rounds")
     plt.tight_layout()
     plt.savefig(os.path.join(folder_path, "cluster_model_evolution.png"), dpi=300)
 

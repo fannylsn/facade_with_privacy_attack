@@ -15,6 +15,7 @@ from decentralizepy.graphs.Graph import Graph  # noqa: F401
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.models.Model import Model  # noqa: F401
 from decentralizepy.node.DPSGDNodeIDCA import DPSGDNodeIDCA
+from decentralizepy.sharing.CurrentModelSharing import CurrentModelSharing
 from decentralizepy.sharing.Sharing import Sharing  # noqa: F401
 from decentralizepy.training.TrainingIDCA import TrainingIDCA  # noqa: F401
 
@@ -65,6 +66,11 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
                 training_class = Training
                 epochs_per_round = 25
                 batch_size = 64
+            [GRAPH]
+                graph_package = decentralizepy.graphs.Regular
+                graph_class = Regular
+                graph_degree = 3
+                graph_seed = 1234
         iterations : int
             Number of iterations (communication steps) for which the model should be trained
         log_dir : str
@@ -173,7 +179,7 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
             reset_optimizer,
         )
         self.init_dataset_models_parrallel(config["DATASET"])
-        self.init_optimizer(config["OPTIMIZER_PARAMS"])
+        self.init_optimizer_config(config["OPTIMIZER_PARAMS"])
         self.init_trainer(config["TRAIN_PARAMS"])
         self.init_comm(config["COMMUNICATION"])
         self.init_graph(config["GRAPH"])
@@ -222,10 +228,6 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
             self.graph_degree,
             seed=self.graph_seed * 100000 + iteration,
         )
-        pass
-
-    def receive_DPSGD(self):
-        return self.receive_channel("DPSGD")
 
     def run(self):
         """
@@ -235,8 +237,6 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
         self.testset = self.dataset.get_testset()
         rounds_to_test = self.test_after
         rounds_to_train_evaluate = self.train_evaluate_after
-        global_epoch = 1
-        change = 1
 
         for iteration in range(self.iterations):
             logging.info("Starting training iteration: %d", iteration)
@@ -248,12 +248,35 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
             treshold_explo = np.exp(-iteration * 3 / self.iterations)
             self.trainer.train(self.dataset, treshold_explo)
 
+            # logging and plotting
+            results_dict = self.get_results_dict(iteration=iteration)
+            results_dict = self.log_metadata(results_dict, iteration)
+
+            if rounds_to_train_evaluate == 0:
+                logging.info("Evaluating on train set.")
+                rounds_to_train_evaluate = self.train_evaluate_after
+                results_dict = self.log_best_model_train_loss(results_dict, iteration)
+
+            if rounds_to_test == 0:
+                rounds_to_test = self.test_after
+
+                if self.dataset.__testing__:
+                    logging.info("evaluating on test set.")
+                    results_dict = self.eval_on_testset(results_dict, iteration)
+
+                if self.dataset.__validating__:
+                    logging.info("evaluating on validation set.")
+                    results_dict = self.eval_on_validationset(results_dict, iteration)
+
+            self.write_results_dict(results_dict)
+
+            # sharing
             self.get_new_graph(iteration)
             self.my_neighbors = self.get_neighbors()
             self.connect_neighbors()
             logging.debug("Connected to all neighbors")
 
-            to_send = self.sharing.get_data_to_send(degree=len(self.my_neighbors))
+            to_send = self.get_data_to_send()
             to_send["CHANNEL"] = "DPSGD"
 
             for neighbor in self.my_neighbors:
@@ -280,31 +303,6 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
 
             self.sharing._averaging(averaging_deque)
 
-            results_dict = self.get_results_dict(iteration=iteration)
-
-            results_dict = self.log_meta_to_results_dict(results_dict, iteration)
-
-            if rounds_to_train_evaluate == 0:
-                logging.info("Evaluating on train set.")
-                rounds_to_train_evaluate = self.train_evaluate_after * change
-                results_dict = self.compute_train_loss_after_avg(
-                    results_dict, iteration
-                )
-
-            if self.dataset.__testing__ and rounds_to_test == 0:
-                rounds_to_test = self.test_after * change
-                logging.info("Evaluating on test set.")
-                results_dict = self.eval_on_testset(results_dict, iteration)
-                if global_epoch == 49:
-                    change *= 2
-                global_epoch += change
-
-                if self.dataset.__validating__:
-                    logging.info("Evaluating on validation set.")
-                    results_dict = self.eval_on_validationset(results_dict, iteration)
-
-            self.write_results_dict(results_dict)
-
         # Done with all iterations
         final_best_model_idx = results_dict["test_best_model_idx"][self.iterations]
         final_best_model = self.models[final_best_model_idx]
@@ -321,3 +319,12 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
         logging.info("Storing final weight")
         final_best_model.dump_weights(self.weights_store_dir, self.uid, iteration)
         logging.info("All neighbors disconnected. Process complete!")
+
+    def get_data_to_send(self) -> Dict:
+        if self.sharing_class == CurrentModelSharing:
+            to_send = self.sharing.get_data_to_send(
+                self.trainer.current_model_idx, len(self.my_neighbors)
+            )
+        else:
+            to_send = self.sharing.get_data_to_send(len(self.my_neighbors))
+        return to_send

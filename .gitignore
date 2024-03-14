@@ -13,4 +13,4 @@ eval/data**
 *swp
 build
 
-.venv
+**/.venv/

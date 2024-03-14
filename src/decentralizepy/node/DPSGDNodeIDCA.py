@@ -181,7 +181,7 @@ class DPSGDNodeIDCA(Node):
             reset_optimizer,
         )
         self.init_dataset_models_parrallel(config["DATASET"])
-        self.init_optimizer(config["OPTIMIZER_PARAMS"])
+        self.init_optimizer_config(config["OPTIMIZER_PARAMS"])
         self.init_trainer(config["TRAIN_PARAMS"])
         self.init_comm(config["COMMUNICATION"])
 
@@ -309,9 +309,9 @@ class DPSGDNodeIDCA(Node):
         torch.manual_seed(random_seed)
         np.random.seed(random_seed)
 
-    def init_optimizer(self, optimizer_configs):
+    def init_optimizer_config(self, optimizer_configs):
         """
-        Instantiate optimizer from config.
+        Instantiate optimizer parameters from config.
 
         Parameters
         ----------
@@ -382,11 +382,11 @@ class DPSGDNodeIDCA(Node):
 
         """
         sharing_package = importlib.import_module(sharing_configs["sharing_package"])
-        sharing_class = getattr(sharing_package, sharing_configs["sharing_class"])
+        self.sharing_class = getattr(sharing_package, sharing_configs["sharing_class"])
         sharing_params = utils.remove_keys(
             sharing_configs, ["sharing_package", "sharing_class"]
         )
-        self.sharing = sharing_class(
+        self.sharing = self.sharing_class(
             self.rank,
             self.machine_id,
             self.communication,
@@ -412,8 +412,6 @@ class DPSGDNodeIDCA(Node):
         self.testset = self.dataset.get_testset()
         rounds_to_test = self.test_after
         rounds_to_train_evaluate = self.train_evaluate_after
-        global_epoch = 1
-        change = 1
 
         for iteration in range(self.iterations):
             logging.info("Starting training iteration: %d", iteration)
@@ -425,6 +423,29 @@ class DPSGDNodeIDCA(Node):
             treshold_explo = np.exp(-iteration * 3 / self.iterations)
             self.trainer.train(self.dataset, treshold_explo)
 
+            # logging and ploting
+            results_dict = self.get_results_dict(iteration=iteration)
+            results_dict = self.log_metadata(results_dict, iteration)
+
+            if rounds_to_train_evaluate == 0:
+                logging.info("Evaluating on train set.")
+                rounds_to_train_evaluate = self.train_evaluate_after
+                results_dict = self.log_best_model_train_loss(results_dict, iteration)
+
+            if rounds_to_test == 0:
+                rounds_to_test = self.test_after
+
+                if self.dataset.__testing__:
+                    logging.info("evaluating on test set.")
+                    results_dict = self.eval_on_testset(results_dict, iteration)
+
+                if self.dataset.__validating__:
+                    logging.info("evaluating on validation set.")
+                    results_dict = self.eval_on_validationset(results_dict, iteration)
+
+            self.write_results_dict(results_dict)
+
+            # sharing
             self.my_neighbors = self.get_neighbors()
             self.connect_neighbors()
             logging.debug("Connected to all neighbors")
@@ -456,31 +477,6 @@ class DPSGDNodeIDCA(Node):
 
             self.sharing._averaging(averaging_deque)
 
-            results_dict = self.get_results_dict(iteration=iteration)
-
-            results_dict = self.log_meta_to_results_dict(results_dict, iteration)
-
-            if rounds_to_train_evaluate == 0:
-                logging.info("Evaluating on train set.")
-                rounds_to_train_evaluate = self.train_evaluate_after * change
-                results_dict = self.compute_train_loss_after_avg(
-                    results_dict, iteration
-                )
-
-            if self.dataset.__testing__ and rounds_to_test == 0:
-                rounds_to_test = self.test_after * change
-                logging.info("Evaluating on test set.")
-                results_dict = self.eval_on_testset(results_dict, iteration)
-                if global_epoch == 49:
-                    change *= 2
-                global_epoch += change
-
-                if self.dataset.__validating__:
-                    logging.info("Evaluating on validation set.")
-                    results_dict = self.eval_on_validationset(results_dict, iteration)
-
-            self.write_results_dict(results_dict)
-
         # Done with all iterations
         final_best_model_idx = results_dict["test_best_model_idx"][self.iterations]
         final_best_model = self.models[final_best_model_idx]
@@ -510,6 +506,7 @@ class DPSGDNodeIDCA(Node):
             results_dict = {
                 "cluster_assigned": self.dataset.cluster,
                 "train_loss": {},
+                "all_train_loss": {str(idx): {} for idx in range(len(self.models))},
                 "test_loss": {},
                 "test_acc": {},
                 "test_best_model_idx": {},
@@ -522,8 +519,8 @@ class DPSGDNodeIDCA(Node):
             }
         return results_dict
 
-    def log_meta_to_results_dict(self, results_dict, iteration):
-        """_summary_
+    def log_metadata(self, results_dict, iteration):
+        """Log the metadata of the communication.
 
         Args:
             results_dict (Dict): dict containg the results
@@ -550,7 +547,7 @@ class DPSGDNodeIDCA(Node):
         ) as of:
             json.dump(results_dict, of)
 
-    def compute_train_loss_after_avg(self, results_dict, iteration):
+    def log_best_model_train_loss(self, results_dict, iteration):
         """Compute the train loss on the best model and save the plot.
 
         This is done after the averaging of models across neighboors.
@@ -559,10 +556,16 @@ class DPSGDNodeIDCA(Node):
             results_dict (dict): Dictionary containing the results
             iteration (int): current iteration
         """
-        self.trainer.choose_best_model(self.dataset)
-        loss_after_sharing = self.trainer.get_best_model_loss()
+        if not self.trainer.current_model_is_best:
+            # If the current model is not the best, we need to choose the best model
+            self.trainer.choose_best_model(self.dataset)
+        training_loss = self.trainer.get_current_model_loss()
+        all_losses = self.trainer.get_all_models_loss()
 
-        results_dict["train_loss"][iteration + 1] = loss_after_sharing
+        results_dict["train_loss"][iteration + 1] = training_loss
+        for idx in range(len(self.models)):
+            results_dict["all_train_loss"][str(idx)][iteration + 1] = all_losses[idx]
+
         self.save_plot(
             results_dict["train_loss"],
             "train_loss",
@@ -570,6 +573,8 @@ class DPSGDNodeIDCA(Node):
             "Communication Rounds",
             os.path.join(self.log_dir, "{}_train_loss.png".format(self.rank)),
         )
+        self.save_plot_models(results_dict["all_train_loss"])
+
         return results_dict
 
     def eval_on_testset(self, results_dict: Dict, iteration):
@@ -641,3 +646,19 @@ class DPSGDNodeIDCA(Node):
         plt.xlabel(xlabel)
         plt.title(title)
         plt.savefig(filename)
+
+    def save_plot_models(self, models_losses: Dict[int, Dict]):
+        """
+        Save the plot of the models.
+
+        """
+        plt.clf()
+        for idx, coords in models_losses.items():
+            y_axis = list(iter(coords.values()))
+            x_axis = list(map(int, coords.keys()))
+            plt.plot(x_axis, y_axis, label=f"Model {idx}")
+        plt.legend()
+        plt.xlabel("Communication Rounds")
+        plt.ylabel("Training Loss")
+        plt.title("Training Loss of all models")
+        plt.savefig(os.path.join(self.log_dir, f"{self.rank}_all_train_loss.png"))

@@ -13,7 +13,7 @@ cp $script_path/$config_file $run_path
 env_python=./.venv/decentralizepy_env/bin/python
 machines=1 # number of machines in the runtime
 iterations=80
-test_after=2
+test_after=4
 eval_file=$decpy_path/testingIDCAwPS.py # decentralized driver code (run on each machine)
 log_level=INFO #INFO # DEBUG | INFO | WARN | CRITICAL
 

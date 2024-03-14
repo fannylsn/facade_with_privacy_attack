@@ -107,13 +107,18 @@ class RotatedMNIST(Dataset):
         """Generate the cluster assignment for the current process."""
         rng = Random()
         rng.seed(self.random_seed)
-        self.clusters_idx = [
-            i % self.number_of_clusters for i in range(self.num_partitions)
-        ]
+        if self.sizes is None:
+            self.clusters_idx = [
+                i % self.number_of_clusters for i in range(self.num_partitions)
+            ]
+        else:
+            self.clusters_idx = []
+            for idx, size in enumerate(self.sizes):
+                self.clusters_idx += [idx] * len(size)
         rng.shuffle(self.clusters_idx)
         self.cluster = self.clusters_idx[self.rank]
 
-    def get_rotation_transform(self) -> torchvision.transforms.functional.rotate:
+    def get_rotation_transform(self) -> torchvision.transforms.RandomRotation:
         """
         Returns a rotation transform based on the cluster assignment
 
@@ -308,7 +313,7 @@ class RotatedMNIST(Dataset):
 
         best_model_idx = loss_vals.index(min(loss_vals))
 
-        logging.debug("Predicted on the test set")
+        logging.debug(f"Predicted on the test set. Best model is {best_model_idx}")
 
         for key, value in enumerate(correct_preds_per_cls[best_model_idx]):
             if totals_pred_per_cls[best_model_idx][key] != 0:
@@ -383,7 +388,7 @@ class RotatedMNIST(Dataset):
 
         best_model_idx = loss_vals.index(min(loss_vals))
 
-        logging.debug("Predicted on the test set")
+        logging.debug(f"Predicted on the val set. Best model is {best_model_idx}")
 
         for key, value in enumerate(correct_preds_per_cls[best_model_idx]):
             if totals_pred_per_cls[best_model_idx][key] != 0:
