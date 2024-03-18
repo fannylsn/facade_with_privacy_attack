@@ -8,9 +8,21 @@ from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.models.Model import Model
 
 NUM_CLASSES = 10
+CLASSES = {
+    0: "plane",
+    1: "car",
+    2: "bird",
+    3: "cat",
+    4: "deer",
+    5: "dog",
+    6: "frog",
+    7: "horse",
+    8: "ship",
+    9: "truck",
+}
 
 
-class RotatedMNIST(RotatedDataset):
+class RotatedCIFAR(RotatedDataset):
     """
     Class for the Rotated MNIST dataset
     """
@@ -81,7 +93,7 @@ class RotatedMNIST(RotatedDataset):
         self.transform = torchvision.transforms.Compose(
             [
                 torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize((0.1307,), (0.3081,)),
+                torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                 self.get_rotation_transform(),
             ]
         )
@@ -94,53 +106,44 @@ class RotatedMNIST(RotatedDataset):
 
     def get_dataset_object(self, train: bool = True) -> torch.utils.data.Dataset:
         """Get the dataset object from torchvision or the filesystem."""
-        dataset = torchvision.datasets.MNIST(
+        dataset = torchvision.datasets.CIFAR10(
             root=self.train_dir, train=train, download=True, transform=self.transform
         )
         return dataset
 
 
 class ConvNet(Model):
-    """Model copied from the PyTorch tutorial on MNIST.
-    Has 1'199'882 trainable parameters.
-    Args:
-        Model (_type_): _description_
+    """Designed by me.
+    Has 448'638 parameters.
     """
 
     def __init__(self):
+        """Initialization of the instance"""
         super().__init__()
-        self.conv1 = nn.Conv2d(1, 32, 3, 1)
-        self.conv2 = nn.Conv2d(32, 64, 3, 1)
-        self.dropout1 = nn.Dropout(0.25)
-        self.dropout2 = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(9216, 128)
-        self.fc2 = nn.Linear(128, NUM_CLASSES)
+        self.conv1 = nn.Conv2d(3, 64, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(64, 64, 5)
+        self.fc1 = nn.Linear(64 * 5 * 5, 200)
+        self.fc2 = nn.Linear(200, 100)
+        self.fc3 = nn.Linear(100, 10)
+
+        self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = F.relu(x)
-        x = self.conv2(x)
-        x = F.relu(x)
-        x = F.max_pool2d(x, 2)
-        x = self.dropout1(x)
-        x = torch.flatten(x, 1)
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = self.dropout2(x)
-        x = self.fc2(x)
-        return x
+        """
+        Performs the forward pass.
 
-
-class ConvNetFromIFCA(Model):
-    """Same model as in the IFCA paper. suposed to achieve 95.05% accuracy on MNIST."""
-
-    def __init__(self, h1=200):
-        super().__init__()
-        self.fc1 = torch.nn.Linear(28 * 28, h1)
-        self.fc2 = torch.nn.Linear(h1, 10)
-
-    def forward(self, x):
-        x = x.view(-1, 28 * 28)
+        Args:
+            x (torch.Tensor): a Nx3x32x32 image tensor
+        """
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = x.view(-1, 64 * 5 * 5)
+        x = self.dropout(x)
         x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return F.log_softmax(x, dim=1)
+        x = self.dropout(x)
+        x = F.relu(self.fc2(x))
+        x = self.dropout(x)
+        x = self.fc3(x)
+
+        return x

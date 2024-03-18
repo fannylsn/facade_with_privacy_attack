@@ -4,7 +4,7 @@
 
 decpy_path=./eval # Path to eval folder
 run_path=./eval/data # Path to the folder where the graph and config file will be copied and the results will be stored
-config_file=config.ini
+config_file=configCIFAR.ini
 script_path=./tutorial/IDCAwithPeerSampling # Path to the folder where the run_IDCAwPS.sh is located
 cp $script_path/$config_file $run_path
 
@@ -15,7 +15,7 @@ machines=1 # number of machines in the runtime
 iterations=80
 test_after=4
 eval_file=$decpy_path/testingIDCAwPS.py # decentralized driver code (run on each machine)
-log_level=INFO #INFO # DEBUG | INFO | WARN | CRITICAL
+log_level=DEBUG #INFO # DEBUG | INFO | WARN | CRITICAL
 
 m=0 # machine id corresponding consistent with ip.json
 echo M is $m
