@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 
 from decentralizepy import utils
 from decentralizepy.communication.Communication import Communication  # noqa: F401
-from decentralizepy.datasets.RotatedMNIST import RotatedMNIST  # noqa: F401
+from decentralizepy.datasets.RotatedDataset import RotatedDataset  # noqa: F401
 from decentralizepy.graphs.Graph import Graph
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.models.Model import Model  # noqa: F401
@@ -293,7 +293,7 @@ class DPSGDNodeIDCA(Node):
         )
         self.dataset = self.dataset_class(
             self.rank, self.machine_id, self.mapping, **self.dataset_params
-        )  # type: RotatedMNIST
+        )  # type: RotatedDataset
 
         logging.info("Dataset instantiation complete.")
 
@@ -627,7 +627,7 @@ class DPSGDNodeIDCA(Node):
 
         Parameters
         ----------
-        l : dict
+        coords : dict
             dict of x -> y. `x` must be castable to int.
         label : str
             label of the plot. Used for legend.

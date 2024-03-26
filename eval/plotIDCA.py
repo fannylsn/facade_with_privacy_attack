@@ -60,6 +60,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             continue
         files = os.listdir(mf_path)
         files = [f for f in files if f.endswith("_results.json")]
+        files = [f for f in files if not f.startswith("-1")]  # remove server in IFCA
         for f in files:
             filepath = os.path.join(mf_path, f)
             with open(filepath, "r") as inf:
@@ -259,14 +260,15 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
     plt.savefig(os.path.join(folder_path, "parameters_metadata.png"), dpi=300)
 
     # Plotting cluster-model attribution
-    plt.figure(6)
-    plot_final_cluster_model_attribution(folder_path, results)
+    if "test_best_model_idx" in results[0].keys():
+        plt.figure(6)
+        plot_final_cluster_model_attribution(folder_path, results)
 
-    plt.figure(7)
-    plot_cluster_model_evolution(folder_path, results)
+        plt.figure(7)
+        plot_cluster_model_evolution(folder_path, results)
 
-    plt.figure(8)
-    plot_cluster_variation(folder_path, results)
+        plt.figure(8)
+        plot_cluster_variation(folder_path, results)
 
 
 def plot_cluster_model_evolution(folder_path, results):

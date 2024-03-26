@@ -22,7 +22,8 @@ from decentralizepy.training.TrainingIDCA import TrainingIDCA  # noqa: F401
 
 class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
     """
-    This class defines the node for DPSGD
+    This class defines the node for DPSGD with peer sampler for non iid datasets.
+    Instead of having a fix graph topology, the graph is updated every iteration.
 
     """
 
@@ -321,6 +322,12 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
         logging.info("All neighbors disconnected. Process complete!")
 
     def get_data_to_send(self) -> Dict:
+        """Gets the data to send to neighbors.
+        Decide if it should send it's current model or if it just has one.
+
+        Returns:
+            Dict: Data to send to neighbors
+        """
         if self.sharing_class == CurrentModelSharing:
             to_send = self.sharing.get_data_to_send(
                 self.trainer.current_model_idx, len(self.my_neighbors)

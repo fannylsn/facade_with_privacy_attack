@@ -5,20 +5,20 @@
 decpy_path=./eval # Path to eval folder
 graph=regular_16.txt # Absolute path of the graph file generated using the generate_graph.py script
 run_path=./eval/data # Path to the folder where the graph and config file will be copied and the results will be stored
-config_file=config.ini
+config_file=configCIFAR.ini
 script_path=./tutorial/IFCA # Path to the folder where the run_IFCA.sh is located
 cp $script_path/$graph $script_path/$config_file $run_path
 
 env_python=./.venv/decentralizepy_env/bin/python
 machines=1 # number of machines in the runtime
 iterations=80
-test_after=2
+test_after=4
 eval_file=$decpy_path/testingIFCA.py # decentralized driver code (run on each machine)
 log_level=INFO #INFO # DEBUG | INFO | WARN | CRITICAL
 
 server_rank=-1
 server_machine=0
-working_rate=0.5
+working_rate=1
 
 m=0 # machine id corresponding consistent with ip.json
 echo M is $m

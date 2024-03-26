@@ -1,6 +1,6 @@
 import logging
 from random import Random
-from typing import List
+from typing import List, Union
 
 import torch
 import torchvision
@@ -14,7 +14,7 @@ from decentralizepy.models.Model import Model
 
 class RotatedDataset(Dataset):
     """
-    Class for Rotated dataset
+    Class for Rotated dataset (used to simulate non IID data).
     """
 
     def __init__(
@@ -245,20 +245,20 @@ class RotatedDataset(Dataset):
             return DataLoader(self.validationset, batch_size=self.test_batch_size)
         raise RuntimeError("Validation set not initialized!")
 
-    def test(self, models: List[Model], loss_func):
+    def test(self, models: Union[List[Model], Model], loss_func):
         """
         Function to evaluate model on the test dataset.
 
         Parameters
         ----------
-        model : decentralizepy.models.Model
-            Model to evaluate
-        loss : torch.nn.loss
+        models : List[decentralizepy.models.Model]
+            Models to be chosen from and evaluate on the best one
+        loss_func : torch.nn.loss
             Loss function to use
 
         Returns
         -------
-        tuple(float, float)
+        tuple(float, float, int)
 
         """
         logging.debug("Evaluate model on the test set")
@@ -267,6 +267,11 @@ class RotatedDataset(Dataset):
         totals_pred_per_cls = []
         totals_correct = []
         totals_predicted = []
+
+        only_one_model = False
+        if not isinstance(models, list):
+            only_one_model = True
+            models = [models]
 
         for i, model in enumerate(models):
             model.eval()
@@ -318,22 +323,27 @@ class RotatedDataset(Dataset):
         )
         final_loss_val = loss_vals[best_model_idx] / count
         logging.info("Overall test accuracy is: {:.1f} %".format(accuracy))
+
+        if only_one_model:
+            # compatibility with the previous version
+            return accuracy, final_loss_val
+
         return accuracy, final_loss_val, best_model_idx
 
-    def validate(self, models: List[Model], loss_func):
+    def validate(self, models: Union[List[Model], Model], loss_func):
         """
         Function to evaluate model on the validation dataset.
 
         Parameters
         ----------
-        model : decentralizepy.models.Model
-            Model to evaluate
+        models : List[decentralizepy.models.Model]
+            Models to be chosen from and evaluate on the best one
         loss : torch.nn.loss
             Loss function to use
 
         Returns
         -------
-        tuple(float, float)
+        tuple(float, float, int)
 
         """
         logging.debug("Evaluate model on the test set")
@@ -342,6 +352,11 @@ class RotatedDataset(Dataset):
         totals_pred_per_cls = []
         totals_correct = []
         totals_predicted = []
+
+        only_one_model = False
+        if not isinstance(models, list):
+            only_one_model = True
+            models = [models]
 
         for i, model in enumerate(models):
             model.eval()
@@ -393,4 +408,9 @@ class RotatedDataset(Dataset):
         )
         final_loss_val = loss_vals[best_model_idx] / count
         logging.info("Overall test accuracy is: {:.1f} %".format(accuracy))
+
+        if only_one_model:
+            # compatibility with the previous version
+            return accuracy, final_loss_val
+
         return accuracy, final_loss_val, best_model_idx
