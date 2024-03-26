@@ -80,13 +80,9 @@ class TrainingIDCA(Training):
         """
         One training iteration
 
-        Parameters
-        ----------
-        dataset : decentralizepy.datasets.Dataset
-            The training dataset. Should implement get_trainset(batch_size, shuffle)
-        treshold : float, optional
-            Treshold in [0, 1] to explore the space. If set to 0, no exploration is done.
-
+        Args:
+            dataset (decentralizepy.datasets.Dataset): The training dataset. Should implement get_trainset(batch_size, shuffle)
+            treshold (float, optional): Treshold in [0, 1] to explore the space. If set to 0, no exploration is done.
         """
 
         # chose the best model
@@ -111,10 +107,9 @@ class TrainingIDCA(Training):
         Choose the best model from the list of models.
         Also, have a percentage of choosing a random model to explore the space.
 
-        Parameters
-        ----------
-        dataset : decentralizepy.datasets.Dataset
-            The dataset interface.
+        Args:
+            dataset (decentralizepy.datasets.Dataset): The dataset interface.
+            treshold (float, optional): Treshold in [0, 1] to explore the space. If set to 0, no exploration is done.
         """
         if self.explore_models:
             if random.uniform(0, 1) < treshold:
@@ -138,11 +133,8 @@ class TrainingIDCA(Training):
         """
         One training iteration, goes through the entire dataset
 
-        Parameters
-        ----------
-        trainset : torch.utils.data.Dataloader
-            The training dataset.
-
+        Args:
+            dataset (decentralizepy.datasets.Dataset): The training dataset.
         """
         trainset = dataset.get_trainset(self.batch_size, self.shuffle)
         for epoch in range(self.rounds):
@@ -163,7 +155,7 @@ class TrainingIDCA(Training):
         """Probably useless, don't use it. Trains on a subset of the data.
 
         Args:
-            dataset (Dataset): the dataset holding the data
+            dataset (decentralizepy.datasets.Dataset): the dataset holding the data
         """
         trainset = dataset.get_trainset(self.batch_size, self.shuffle)
         for epoch in range(self.rounds):
@@ -186,11 +178,12 @@ class TrainingIDCA(Training):
         """
         Evaluate the loss on the training set on the given model
 
-        Parameters
-        ----------
-        dataset : decentralizepy.datasets.Dataset
-            The training dataset. Should implement get_trainset(batch_size, shuffle)
+        Args:
+            model (decentralizepy.models.Model): The model to evaluate.
+            dataset (decentralizepy.datasets.Dataset): The training dataset. Should implement get_trainset(batch_size, shuffle)
 
+        Returns:
+            float: Loss value
         """
         model.eval()  # set the model to inference mode
         trainset = dataset.get_trainset(self.batch_size, self.shuffle)
@@ -202,26 +195,23 @@ class TrainingIDCA(Training):
                 loss_val = self.loss(output, target)
                 epoch_loss += loss_val.item()
                 count += 1
+                if not self.full_epochs:
+                    # early exit for debug settings (not full epochs)
+                    if count >= self.rounds:
+                        break
         loss = epoch_loss / count
-        logging.info("Loss after iteration: {}".format(loss))
+        logging.info(f"Loss after {count} iteration: {loss}")
         return loss
 
     def _trainstep(self, data, target):
-        """
-        One training step on a minibatch.
+        """One training step on a minibatch.
 
-        Parameters
-        ----------
-        data : any
-            Data item
-        target : any
-            Label
+        Args:
+            data: Data item
+            target: Label
 
-        Returns
-        -------
-        int
-            Loss Value for the step
-
+        Returns:
+            int: Loss Value for the step
         """
         self.current_model.zero_grad()
         output = self.current_model(data)
@@ -232,25 +222,19 @@ class TrainingIDCA(Training):
 
     def get_current_best_model(self) -> Model:
         """
-        Get the best model
+        Get the current model
 
-        Returns
-        -------
-        torch.nn.Module
-            Best model
-
+        Returns:
+            decentralizepy.models.Model: Current model
         """
         return self.current_model
 
     def get_current_model_loss(self) -> float:
         """
-        Get the loss of the best model
+        Get the loss of the current model
 
-        Returns
-        -------
-        float
-            Loss of the best model
-
+        Returns:
+            float: Loss of the best model
         """
         assert self.current_model_loss is not None
         return self.current_model_loss
@@ -259,11 +243,8 @@ class TrainingIDCA(Training):
         """
         Get the losses of all models
 
-        Returns
-        -------
-        List[float]
-            Losses of all models
-
+        Returns:
+            List[float]: Losses of all models
         """
         assert self.models_losses is not None
         return self.models_losses

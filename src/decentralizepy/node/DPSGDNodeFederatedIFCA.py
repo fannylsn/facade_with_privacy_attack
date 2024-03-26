@@ -13,17 +13,16 @@ from matplotlib import pyplot as plt
 from decentralizepy import utils
 from decentralizepy.communication.Communication import Communication  # noqa: F401
 from decentralizepy.datasets.RotatedDataset import RotatedDataset  # noqa: F401
-from decentralizepy.graphs.Graph import Graph
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.models.Model import Model  # noqa: F401
 from decentralizepy.node.Node import Node
-from decentralizepy.sharing.Sharing import Sharing  # noqa: F401
+from decentralizepy.sharing.IFCASharing import IFCASharing  # noqa: F401
 from decentralizepy.training.TrainingIDCA import TrainingIDCA  # noqa: F401
 
 
-class DPSGDNodeIDCA(Node):
+class DPSGDNodeFederatedIFCA(Node):
     """
-    This class defines the node for DPSGD
+    This class defines the node for federated DPSGD for IFCA algorithm.
 
     """
 
@@ -32,7 +31,6 @@ class DPSGDNodeIDCA(Node):
         rank: int,
         machine_id: int,
         mapping: Mapping,
-        graph: Graph,
         config,
         iterations=1,
         log_dir=".",
@@ -41,6 +39,7 @@ class DPSGDNodeIDCA(Node):
         test_after=5,
         train_evaluate_after=1,
         reset_optimizer=1,
+        parameter_server_uid=-1,
         *args,
     ):
         """
@@ -54,8 +53,6 @@ class DPSGDNodeIDCA(Node):
             Machine ID on which the process in running
         mapping : decentralizepy.mappings
             The object containing the mapping rank <--> uid
-        graph : decentralizepy.graphs
-            The object containing the global graph
         config : dict
             A dictionary of configurations. Must contain the following:
             [DATASET]
@@ -84,6 +81,8 @@ class DPSGDNodeIDCA(Node):
             Number of iterations after which the train loss is calculated
         reset_optimizer : int
             1 if optimizer should be reset every communication round, else 0
+        parameter_server_uid: int
+            The parameter server's uid
         args : optional
             Other arguments
 
@@ -99,7 +98,6 @@ class DPSGDNodeIDCA(Node):
             rank,
             machine_id,
             mapping,
-            graph,
             config,
             iterations,
             log_dir,
@@ -113,6 +111,13 @@ class DPSGDNodeIDCA(Node):
         logging.info(
             "Each proc uses %d threads out of %d.", self.threads_per_proc, total_threads
         )
+
+        self.message_queue["PEERS"] = deque()
+
+        self.parameter_server_uid = parameter_server_uid
+        self.connect_neighbor(self.parameter_server_uid)
+        self.wait_for_hello(self.parameter_server_uid)
+
         self.run()
 
     def instantiate(
@@ -120,7 +125,6 @@ class DPSGDNodeIDCA(Node):
         rank: int,
         machine_id: int,
         mapping: Mapping,
-        graph: Graph,
         config,
         iterations=1,
         log_dir=".",
@@ -142,8 +146,6 @@ class DPSGDNodeIDCA(Node):
             Machine ID on which the process in running
         mapping : decentralizepy.mappings
             The object containing the mapping rank <--> uid
-        graph : decentralizepy.graphs
-            The object containing the global graph
         config : dict
             A dictionary of configurations.
         iterations : int
@@ -172,7 +174,6 @@ class DPSGDNodeIDCA(Node):
             rank,
             machine_id,
             mapping,
-            graph,
             iterations,
             log_dir,
             weights_store_dir,
@@ -188,18 +189,16 @@ class DPSGDNodeIDCA(Node):
         self.message_queue = dict()
 
         self.barrier = set()
-        self.my_neighbors = self.graph.neighbors(self.uid)
+
+        self.participated = 0
 
         self.init_sharing(config["SHARING"])
-        self.peer_deques = dict()
-        self.connect_neighbors()
 
     def cache_fields(
         self,
         rank,
         machine_id,
         mapping,
-        graph,
         iterations,
         log_dir,
         weights_store_dir,
@@ -218,8 +217,6 @@ class DPSGDNodeIDCA(Node):
             Machine ID on which the process in running
         mapping : decentralizepy.mappings
             The object containing the mapping rank <--> uid
-        graph : decentralizepy.graphs
-            The object containing the global graph
         iterations : int
             Number of iterations (communication steps) for which the model should be trained
         log_dir : str
@@ -235,7 +232,6 @@ class DPSGDNodeIDCA(Node):
         """
         self.rank = rank
         self.machine_id = machine_id
-        self.graph = graph
         self.mapping = mapping
         self.uid = self.mapping.get_uid(rank, machine_id)
         self.n_procs = self.mapping.get_n_procs()
@@ -265,14 +261,13 @@ class DPSGDNodeIDCA(Node):
         comm_class = getattr(comm_module, comm_configs["comm_class"])
         comm_params = utils.remove_keys(comm_configs, ["comm_package", "comm_class"])
         self.addresses_filepath = comm_params.get("addresses_filepath", None)
-
         self.communication = comm_class(
             self.rank, self.machine_id, self.mapping, self.n_procs, **comm_params
         )  # type: Communication
 
     def init_dataset_models_parrallel(self, dataset_configs):
         """
-        Instantiate dataset and model from config.
+        Instantiate dataset and model from config. Also instantiate k models.
 
         Parameters
         ----------
@@ -298,6 +293,7 @@ class DPSGDNodeIDCA(Node):
         logging.info("Dataset instantiation complete.")
 
         # The initialization of the models must be different for each node.
+        # Actually, it doesn't matter as each node will receive the same model from the server.
         torch.manual_seed(random_seed * self.rank)
         np.random.seed(random_seed * self.rank)
         self.model_class = getattr(dataset_module, dataset_configs["model_class"])
@@ -391,47 +387,49 @@ class DPSGDNodeIDCA(Node):
             self.machine_id,
             self.communication,
             self.mapping,
-            self.graph,
             self.models,
-            self.dataset,
             self.log_dir,
             **sharing_params,
-        )  # type: Sharing
-
-    def get_neighbors(self, node=None):
-        return self.my_neighbors
-
-    def receive_DPSGD(self):
-        return self.receive_channel("DPSGD")
+        )  # type: IFCASharing
 
     def run(self):
         """
         Start the decentralized learning
 
         """
-        self.testset = self.dataset.get_testset()
-        rounds_to_test = self.test_after
-        rounds_to_train_evaluate = self.train_evaluate_after
+        # rounds_to_test = self.test_after
+        # rounds_to_train_evaluate = self.train_evaluate_after
+        rounds_to_test = 1
+        rounds_to_train_evaluate = 1
 
-        for iteration in range(self.iterations):
-            logging.info("Starting training iteration: %d", iteration)
-            rounds_to_train_evaluate -= 1
+        while len(self.barrier):
             rounds_to_test -= 1
-            self.iteration = iteration
+            rounds_to_train_evaluate -= 1
 
-            # best model choice in done in trainer
-            treshold_explo = np.exp(-iteration * 3 / self.iterations)
-            self.trainer.train(self.dataset, treshold_explo)
+            # receive from server
+            sender, data = self.receive_channel("WORKER_REQUEST")
+
+            if "BYE" in data:
+                logging.debug("Received {} from {}".format("BYE", sender))
+                self.barrier.remove(sender)
+                break
+
+            iteration = data["iteration"]
+            self.sharing.recieve_data_node(data)
+
+            logging.debug(
+                "Received worker request at node {}, global iteration {}, local round {}".format(
+                    self.uid, iteration, self.participated
+                )
+            )
 
             # logging and ploting
-            results_dict = self.get_results_dict(iteration=iteration)
+            results_dict = self.get_results_dict()
             results_dict = self.log_metadata(results_dict, iteration)
 
-            if rounds_to_train_evaluate == 0:
-                logging.info("Evaluating on train set.")
-                rounds_to_train_evaluate = self.train_evaluate_after
-                results_dict = self.log_best_model_train_loss(results_dict, iteration)
-
+            # testing
+            # It must be done before training, as we want to test the models of
+            # the central server on the local dataset.
             if rounds_to_test == 0:
                 rounds_to_test = self.test_after
 
@@ -443,60 +441,31 @@ class DPSGDNodeIDCA(Node):
                     logging.info("evaluating on validation set.")
                     results_dict = self.eval_on_validationset(results_dict, iteration)
 
+            # training
+            logging.info("Starting training iteration")
+            # No exploration by design in raw IFCA -> treshold = 0
+            self.trainer.train(self.dataset, 0)
+
+            if rounds_to_train_evaluate == 0:
+                logging.info("Evaluating on train set.")
+                rounds_to_train_evaluate = self.train_evaluate_after
+                results_dict = self.log_best_model_train_loss(results_dict, iteration)
+
             self.write_results_dict(results_dict)
 
-            # sharing
-            self.my_neighbors = self.get_neighbors()
-            self.connect_neighbors()
-            logging.debug("Connected to all neighbors")
-
-            to_send = self.sharing.get_data_to_send(degree=len(self.my_neighbors))
+            # Send update to server
+            to_send = self.sharing.get_data_to_send_node(self.trainer.current_model_idx)
             to_send["CHANNEL"] = "DPSGD"
+            self.communication.send(self.parameter_server_uid, to_send)
 
-            for neighbor in self.my_neighbors:
-                self.communication.send(neighbor, to_send)
+            # update local iteration
+            self.participated += 1
 
-            while not self.received_from_all():
-                sender, data = self.receive_DPSGD()
-                logging.debug(
-                    "Received Model from {} of iteration {}".format(
-                        sender, data["iteration"]
-                    )
-                )
-                if sender not in self.peer_deques:
-                    self.peer_deques[sender] = deque()
+        logging.info("Server disconnected. Process complete!")
 
-                if data["iteration"] == iteration:
-                    self.peer_deques[sender].appendleft(data)
-                else:
-                    self.peer_deques[sender].append(data)
-
-            averaging_deque = dict()
-            for neighbor in self.my_neighbors:
-                averaging_deque[neighbor] = self.peer_deques[neighbor]
-
-            self.sharing._averaging(averaging_deque)
-
-        # Done with all iterations
-        final_best_model_idx = results_dict["test_best_model_idx"][self.iterations]
-        final_best_model = self.models[final_best_model_idx]
-        if final_best_model.shared_parameters_counter is not None:
-            logging.info("Saving the shared parameter counts")
-            with open(
-                os.path.join(
-                    self.log_dir, "{}_shared_parameters.json".format(self.rank)
-                ),
-                "w",
-            ) as of:
-                json.dump(self.model.shared_parameters_counter.numpy().tolist(), of)
-        self.disconnect_neighbors()
-        logging.info("Storing final weight")
-        final_best_model.dump_weights(self.weights_store_dir, self.uid, iteration)
-        logging.info("All neighbors disconnected. Process complete!")
-
-    def get_results_dict(self, iteration):
+    def get_results_dict(self):
         """Get the results dictionary, or create it."""
-        if iteration:
+        if self.participated > 0:
             with open(
                 os.path.join(self.log_dir, "{}_results.json".format(self.rank)),
                 "r",
@@ -577,50 +546,6 @@ class DPSGDNodeIDCA(Node):
 
         return results_dict
 
-    def eval_on_testset(self, results_dict: Dict, iteration):
-        """Evaluate the model on the test set.
-        Args:
-            results_dict (dict): Dictionary containing the results
-            iteration (int): current iteration
-        """
-        ta, tl, bidx = self.dataset.test(self.models, self.loss)
-        results_dict["test_acc"][iteration + 1] = ta
-        results_dict["test_loss"][iteration + 1] = tl
-        results_dict["test_best_model_idx"][iteration + 1] = bidx
-        return results_dict
-
-    def eval_on_validationset(self, results_dict: Dict, iteration):
-        """_summary_
-
-        Args:
-            results_dict (Dict): _description_
-            iteration (_type_): _description_
-        """
-        va, vl, bidx = self.dataset.validate(self.models, self.loss)
-        results_dict["validation_acc"][iteration + 1] = va
-        results_dict["validation_loss"][iteration + 1] = vl
-        results_dict["validation_best_model_idx"][iteration + 1] = bidx
-        return results_dict
-
-    def received_from_all(self):
-        """
-        Check if all neighbors have sent the current iteration
-
-        Returns
-        -------
-        bool
-            True if required data has been received, False otherwise
-
-        """
-        for k in self.my_neighbors:
-            if (
-                (k not in self.peer_deques)
-                or len(self.peer_deques[k]) == 0
-                or self.peer_deques[k][0]["iteration"] != self.iteration
-            ):
-                return False
-        return True
-
     def save_plot(self, coords, label, title, xlabel, filename):
         """
         Save Matplotlib plot. Clears previous plots.
@@ -648,9 +573,10 @@ class DPSGDNodeIDCA(Node):
         plt.savefig(filename)
 
     def save_plot_models(self, models_losses: Dict[int, Dict]):
-        """
-        Save the plot of the models.
+        """Save the plot of the models.
 
+        Args:
+            models_losses (Dict[int, Dict]): dict containing the losses of each model.
         """
         plt.clf()
         for idx, coords in models_losses.items():
@@ -662,3 +588,29 @@ class DPSGDNodeIDCA(Node):
         plt.ylabel("Training Loss")
         plt.title("Training Loss of all models")
         plt.savefig(os.path.join(self.log_dir, f"{self.rank}_all_train_loss.png"))
+
+    def eval_on_testset(self, results_dict: Dict, iteration):
+        """Evaluate the model on the test set.
+
+        Args:
+            results_dict (dict): Dictionary containing the results
+            iteration (int): current iteration
+        """
+        ta, tl, bidx = self.dataset.test(self.models, self.loss)
+        results_dict["test_acc"][iteration + 1] = ta
+        results_dict["test_loss"][iteration + 1] = tl
+        results_dict["test_best_model_idx"][iteration + 1] = bidx
+        return results_dict
+
+    def eval_on_validationset(self, results_dict: Dict, iteration):
+        """Evaluate the model on the validation set.
+
+        Args:
+            results_dict (dict): Dictionary containing the results
+            iteration (int): current iteration
+        """
+        va, vl, bidx = self.dataset.validate(self.models, self.loss)
+        results_dict["validation_acc"][iteration + 1] = va
+        results_dict["validation_loss"][iteration + 1] = vl
+        results_dict["validation_best_model_idx"][iteration + 1] = bidx
+        return results_dict

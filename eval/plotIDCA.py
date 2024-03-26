@@ -10,11 +10,11 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 
-def get_stats(l):
-    assert len(l) > 0
+def get_stats(data):
+    assert len(data) > 0
     mean_dict, stdev_dict, min_dict, max_dict = {}, {}, {}, {}
-    for key in l[0].keys():
-        all_nodes = [i[key] for i in l]
+    for key in data[0].keys():
+        all_nodes = [i[key] for i in data]
         all_nodes = np.array(all_nodes)
         mean = np.mean(all_nodes)
         std = np.std(all_nodes)
@@ -60,6 +60,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             continue
         files = os.listdir(mf_path)
         files = [f for f in files if f.endswith("_results.json")]
+        files = [f for f in files if not f.startswith("-1")]  # remove server in IFCA
         for f in files:
             filepath = os.path.join(mf_path, f)
             with open(filepath, "r") as inf:
@@ -259,13 +260,18 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
     plt.savefig(os.path.join(folder_path, "parameters_metadata.png"), dpi=300)
 
     # Plotting cluster-model attribution
-    plot_final_cluster_model_attribution(folder_path, results)
+    if "test_best_model_idx" in results[0].keys():
+        plt.figure(6)
+        plot_final_cluster_model_attribution(folder_path, results)
 
-    plot_cluster_model_evolution(folder_path, results)
+        plt.figure(7)
+        plot_cluster_model_evolution(folder_path, results)
+
+        plt.figure(8)
+        plot_cluster_variation(folder_path, results)
 
 
 def plot_cluster_model_evolution(folder_path, results):
-    plt.figure(7)
     data = [
         (x["cluster_assigned"], int(k), v)
         for x in results
@@ -276,7 +282,8 @@ def plot_cluster_model_evolution(folder_path, results):
     max_iter = max([el[1] for el in data])
     space_iter = data[1][1] - data[0][1]
     init_iter = data[0][1]
-    _, axs = plt.subplots(len(clusters), 1)
+    fig, axs = plt.subplots(len(clusters), 1)
+    fig.suptitle("Number of node in each cluster picking each model")
     for i, cluster in enumerate(clusters):
         cluster_data = [x for x in data if x[0] == cluster]
         for model in models:
@@ -297,13 +304,14 @@ def plot_cluster_model_evolution(folder_path, results):
         axs[i].title.set_text(f"Cluster {cluster} Data Distribution")
         axs[i].legend(loc="upper right", fontsize="8")
         axs[i].set_ylabel("Nodes")
+    # fig.text(0.00, 0.5, "Number of nodes", va="center", rotation="vertical")
     axs[i].set_xlabel("Communication Rounds")
     plt.tight_layout()
     plt.savefig(os.path.join(folder_path, "cluster_model_evolution.png"), dpi=300)
+    plt.close()
 
 
 def plot_final_cluster_model_attribution(folder_path, results):
-    plt.figure(6)
     max_iter = max(
         [int(iter) for x in results for iter in x["test_best_model_idx"].keys()]
     )
@@ -323,6 +331,28 @@ def plot_final_cluster_model_attribution(folder_path, results):
     sns.heatmap(heatmap_matrix, annot=True, fmt="g", cmap="YlGnBu")
     plt.title("Heatmap of Data Distribution")
     plt.savefig(os.path.join(folder_path, "cluster_model_distribution.png"), dpi=300)
+    plt.close()
+
+
+def plot_cluster_variation(folder_path, results):
+    # HORIBLE !
+    # breakpoint()
+    data = [list(x["test_best_model_idx"].values()) for x in results]
+    idx = [int(x) for x in results[0]["test_best_model_idx"].keys()]
+    variations = []
+    for x in data:
+        varia = []
+        for i in range(1, len(x)):
+            varia.append(int(bool(x[i] - x[i - 1])))
+        variations.append(varia)
+    variations = np.array(variations)
+    plt.plot(idx[1:], np.sum(variations, axis=0))
+    plt.xlim(left=0)
+    plt.title("Variation in model Selection across all nodes")
+    plt.xlabel("Communication Rounds")
+    plt.ylabel("Sum of all variations")
+    plt.savefig(os.path.join(folder_path, "cluster_variation.png"), dpi=300)
+    plt.close()
 
 
 def plot_parameters(path):
