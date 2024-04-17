@@ -3,39 +3,44 @@
 # RUN it from the root folder of the project
 decpy_path=./eval # Path to eval folder
 run_path=./eval/data # Path to the folder where the graph and config file will be copied and the results will be stored
-prefix_dir=experiment_minority_DPSGDnIID_$(date '+%Y-%m-%dT%H:%M')
+prefix_dir=experiment_minority_ifca_$(date '+%Y-%m-%dT%H:%M')
 env_python=./.venv/decentralizepy_env/bin/python
 
-script_path=./tutorial/DPSGDwithNonIID # Path to the folder where the run_IDCAwPS.sh is located
+script_path=./tutorial/IFCA # Path to the folder where the run_IDCAwPS.sh is located
 
 machines=1 # number of machines in the runtime
 iterations=80
 test_after=4
-eval_file=$decpy_path/testingDPSGDnIID.py # decentralized driver code (run on each machine)
+# CAREFULL restarts
+eval_file=$decpy_path/testingIFCA_restarts.py # decentralized driver code (run on each machine)
 log_level=INFO #INFO # DEBUG | INFO | WARN | CRITICAL
+
+server_rank=-1
+server_machine=0
+working_rate=1
 
 m=0 # machine id corresponding consistent with ip.json
 
 echo "All started at $(date '+%Y-%m-%dT%H:%M')!"
 
 
-for config in 1 2 3 4
+for config in 4 3 2 1
 do
     if [ $config -eq 1 ]
     then
-        config_file=config_1to1_DPSGDnIID.ini
+        config_file=config_1to1_ifca.ini
         procs_per_machine=32 #16 vs 16
     elif [ $config -eq 2 ]
     then
-        config_file=config_1to2_DPSGDnIID.ini
+        config_file=config_1to2_ifca.ini
         procs_per_machine=24 #16 vs 8
     elif [ $config -eq 3 ]
     then
-        config_file=config_1to4_DPSGDnIID.ini
+        config_file=config_1to4_ifca.ini
         procs_per_machine=20 #16 vs 4
     elif [ $config -eq 4 ]
     then
-        config_file=config_1to8_DPSGDnIID.ini
+        config_file=config_1to8_ifca.ini
         procs_per_machine=18 #16 vs 2
     fi
 
@@ -44,13 +49,8 @@ do
     echo M is $m
     echo procs per machine is $procs_per_machine
 
-    for seed in 111 222 333 444 555
+    for seed in 11 22 # 33 44 55
     do
-        # if [ $seed -eq 111 ] && [ $config -eq 2 ]
-        # then
-        #     continue
-        # fi
-
         field_name=random_seed
         sed -i "s/\($field_name *= *\).*/\1$seed/" $run_path/$config_file
 
@@ -58,7 +58,8 @@ do
         echo $log_dir
         mkdir -p $log_dir
 
-        $env_python $eval_file -ro 0 -tea $test_after -ld $log_dir -mid $m -ps $procs_per_machine -ms $machines -is $iterations -ta $test_after -cf $run_path/$config_file -ll $log_level -wsd $log_dir
+        $env_python $eval_file -ro 0 -tea $test_after -ld $log_dir -wsd $log_dir -mid $m -ps $procs_per_machine -ms $machines -is $iterations -ta $test_after -cf $run_path/$config_file -ll $log_level -sm $server_machine -sr $server_rank -wr $working_rate
     done
 done
+
 echo "All done at $(date '+%Y-%m-%dT%H:%M')!"
