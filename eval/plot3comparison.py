@@ -3,11 +3,18 @@ import os
 import sys
 from collections import Counter
 from pathlib import Path
+from typing import Dict
 
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
+
+sys.path.append("/eval/")
+from plotIDCA import (
+    CIFAR_CLASSES,
+    compute_rates,
+)
 
 CONFIGS = [
     "IFCA",
@@ -59,6 +66,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
     data_means, data_stdevs = {}, {}
 
     subdirs = os.listdir(folder_path)
+    subdirs.sort()
     each_results = {}
     for subdir in subdirs:
         subdir_path = os.path.join(folder_path, subdir)
@@ -73,9 +81,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
                 continue
             files = os.listdir(mf_path)
             files = [f for f in files if f.endswith("_results.json")]
-            files = [
-                f for f in files if not f.startswith("-1")
-            ]  # remove server in IFCA
+            files = [f for f in files if not f.startswith("-1")]  # remove server in IFCA
             for f in files:
                 filepath = os.path.join(mf_path, f)
                 with open(filepath, "r") as inf:
@@ -86,7 +92,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
     for subdir, results in each_results.items():
         subdir_path = os.path.join(folder_path, subdir)
         for name in CONFIGS:
-            if name in subdir:
+            if name.lower() in str(subdir).lower():
                 config = name
                 break
         # Plotting bytes over time
@@ -106,11 +112,16 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             os.path.join(subdir_path, "total_bytes.csv"),
             index_label="rounds",
         )
+        plt.savefig(os.path.join(folder_path, "total_bytes.png"), dpi=300)
 
         # Plot Training loss
-        plt.figure(1)
+        plt.figure(20)
         means, stdevs, mins, maxs = get_stats([x["train_loss"] for x in results])
         plot(means, stdevs, mins, maxs, "Training Loss", config, "upper right")
+
+        # handle the last artificial iteration for all reduce
+        if list(iter(b_means.keys())) != list(iter(means.keys())):
+            b_means[list(iter(means.keys()))[-1]] = np.nan
 
         correct_bytes = [b_means[x] for x in means]
 
@@ -124,6 +135,8 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             list(means.keys()),
             columns=["mean", "std", "nr_nodes", "total_bytes"],
         )
+        plt.savefig(os.path.join(folder_path, "train_loss.png"), dpi=300)
+
         plt.figure(11)
         means = replace_dict_key(means, b_means)
         plot(
@@ -136,10 +149,12 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             "upper right",
             "Total Bytes per node",
         )
+        plt.savefig(os.path.join(folder_path, "bytes_train_loss.png"), dpi=300)
 
         df.to_csv(os.path.join(subdir_path, "train_loss.csv"), index_label="rounds")
+
         # Plot Testing loss
-        plt.figure(2)
+        plt.figure(21)
         means, stdevs, mins, maxs = get_stats([x["test_loss"] for x in results])
         plot(means, stdevs, mins, maxs, "Testing Loss", config, "upper right")
         df = pd.DataFrame(
@@ -152,6 +167,8 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             list(means.keys()),
             columns=["mean", "std", "nr_nodes", "total_bytes"],
         )
+        plt.savefig(os.path.join(folder_path, "test_loss.png"), dpi=300)
+
         plt.figure(12)
         means = replace_dict_key(means, b_means)
         plot(
@@ -164,10 +181,12 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             "upper right",
             "Total Bytes per node",
         )
+        plt.savefig(os.path.join(folder_path, "bytes_test_loss.png"), dpi=300)
 
         df.to_csv(os.path.join(subdir_path, "test_loss.csv"), index_label="rounds")
+
         # Plot Testing Accuracy
-        plt.figure(3)
+        plt.figure(22)
         means, stdevs, mins, maxs = get_stats([x["test_acc"] for x in results])
         plot(means, stdevs, mins, maxs, "Testing Accuracy", config, "lower right")
         df = pd.DataFrame(
@@ -180,6 +199,8 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             list(means.keys()),
             columns=["mean", "std", "nr_nodes", "total_bytes"],
         )
+        plt.savefig(os.path.join(folder_path, "test_acc.png"), dpi=300)
+
         plt.figure(13)
         means = replace_dict_key(means, b_means)
         plot(
@@ -193,6 +214,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             "Total Bytes per node",
         )
         df.to_csv(os.path.join(subdir_path, "test_acc.csv"), index_label="rounds")
+        plt.savefig(os.path.join(folder_path, "bytes_test_acc.png"), dpi=300)
 
         # Collect total_bytes shared
         bytes_list = []
@@ -222,23 +244,8 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         data_means[config] = list(means.values())[0]
         data_stdevs[config] = list(stdevs.values())[0]
 
-        plt.figure(10)
-        plt.savefig(os.path.join(folder_path, "total_bytes.png"), dpi=300)
-        plt.figure(11)
-        plt.savefig(os.path.join(folder_path, "bytes_train_loss.png"), dpi=300)
-        plt.figure(12)
-        plt.savefig(os.path.join(folder_path, "bytes_test_loss.png"), dpi=300)
-        plt.figure(13)
-        plt.savefig(os.path.join(folder_path, "bytes_test_acc.png"), dpi=300)
-
-        plt.figure(1)
-        plt.savefig(os.path.join(folder_path, "train_loss.png"), dpi=300)
-        plt.figure(2)
-        plt.savefig(os.path.join(folder_path, "test_loss.png"), dpi=300)
-        plt.figure(3)
-        plt.savefig(os.path.join(folder_path, "test_acc.png"), dpi=300)
         # Plot total_bytes
-        plt.figure(4)
+        plt.figure(14)
         plt.title("Data Shared")
         x_pos = np.arange(len(bytes_means.keys()))
         plt.bar(
@@ -253,7 +260,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         plt.savefig(os.path.join(folder_path, "data_shared.png"), dpi=300)
 
         # Plot stacked_bytes
-        plt.figure(5)
+        plt.figure(15)
         plt.title("Data Shared per Neighbor")
         x_pos = np.arange(len(bytes_means.keys()))
         plt.bar(
@@ -277,23 +284,30 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         plt.savefig(os.path.join(folder_path, "parameters_metadata.png"), dpi=300)
 
         # Plotting cluster-model attribution
-        if "cluster_assigned" in results[0].keys():
-            plt.figure(6)
+        if "test_best_model_idx" in results[0].keys():
+            plt.figure(30)
             plot_final_cluster_model_attribution(subdir_path, results)
 
-            plt.figure(7)
+            plt.figure(31)
             plot_cluster_model_evolution(subdir_path, results)
 
-            plt.figure(8)
+            plt.figure(32)
             plot_cluster_variation(subdir_path, results)
+
+        # faireness
+        if "per_sample_pred_test" in results[0].keys():
+            for res in results:
+                res["per_sample_pred_test"] = {k: json.loads(v) for k, v in res["per_sample_pred_test"].items()}
+                res["per_sample_true_test"] = {k: json.loads(v) for k, v in res["per_sample_true_test"].items()}
+            per_class_rates, per_cluster_rates = compute_rates(results)
+            plt.figure(40)
+            plot_per_class_demographic_parity(per_class_rates, folder_path, config)
+            plt.figure(41)
+            plot_per_class_equal_opportunities(per_class_rates, folder_path, config)
 
 
 def plot_cluster_model_evolution(folder_path, results):
-    data = [
-        (x["cluster_assigned"], int(k), v)
-        for x in results
-        for k, v in x["test_best_model_idx"].items()
-    ]
+    data = [(x["cluster_assigned"], int(k), v) for x in results for k, v in x["test_best_model_idx"].items()]
     clusters = set([x[0] for x in data])
     models = set([x[2] for x in data])
     max_iter = max([el[1] for el in data])
@@ -329,22 +343,12 @@ def plot_cluster_model_evolution(folder_path, results):
 
 
 def plot_final_cluster_model_attribution(folder_path, results):
-    max_iter = max(
-        [int(iter) for x in results for iter in x["test_best_model_idx"].keys()]
-    )
+    max_iter = max([int(iter) for x in results for iter in x["test_best_model_idx"].keys()])
 
-    data = [
-        (x["cluster_assigned"], x["test_best_model_idx"][str(max_iter)])
-        for x in results
-    ]
+    data = [(x["cluster_assigned"], x["test_best_model_idx"][str(max_iter)]) for x in results]
     df = pd.DataFrame(data, columns=["Cluster Assigned", "Best Model"])
-    heatmap_data = (
-        df.groupby(["Cluster Assigned", "Best Model"]).size().reset_index(name="Count")
-    )
-    heatmap_matrix = heatmap_data.pivot(
-        index="Cluster Assigned", columns="Best Model", values="Count"
-    ).fillna(0)
-    plt.figure(figsize=(8, 6))
+    heatmap_data = df.groupby(["Cluster Assigned", "Best Model"]).size().reset_index(name="Count")
+    heatmap_matrix = heatmap_data.pivot(index="Cluster Assigned", columns="Best Model", values="Count").fillna(0)
     sns.heatmap(heatmap_matrix, annot=True, fmt="g", cmap="YlGnBu")
     plt.title("Heatmap of Data Distribution")
     plt.savefig(os.path.join(folder_path, "cluster_model_distribution.png"), dpi=300)
@@ -372,8 +376,59 @@ def plot_cluster_variation(folder_path, results):
     plt.close()
 
 
+def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]], folder_path, config):
+    """Compute and plot the demographic parity with S the sensitive attribute beeing the cluster belonging of each node.
+        TP + FP / all preds
+    Args:
+        per_class_rates (Dict): _description_
+        folder_path (_type_): _description_
+    """
+    clusters = list(per_class_rates.keys())
+    pos_preds_0 = per_class_rates[clusters[0]]["TP"] + per_class_rates[clusters[0]]["FP"]
+    tot_0 = np.sum([per_class_rates[clusters[0]][k] for k in per_class_rates[clusters[0]].keys()], axis=0)
+    pos_preds_1 = per_class_rates[clusters[1]]["TP"] + per_class_rates[clusters[1]]["FP"]
+    tot_1 = np.sum([per_class_rates[clusters[1]][k] for k in per_class_rates[clusters[1]].keys()], axis=0)
+
+    demo_parity = abs(pos_preds_0 / tot_0 - pos_preds_1 / tot_1)
+
+    plt.plot(demo_parity, "o", label=config)
+    plt.title("Per class demographic parity")
+    plt.ylabel("Absolute difference in accuracy")
+    plt.xlabel("Classes")
+    plt.legend(loc="upper right")
+    plt.xticks(range(len(demo_parity)), [CIFAR_CLASSES[i] for i in range(len(demo_parity))], rotation=45)
+    plt.savefig(os.path.join(folder_path, "demographic_parity.png"), dpi=300)
+
+
+def plot_per_class_equal_opportunities(per_class_rates: Dict[int, Dict[str, int]], folder_path, config):
+    """Compute and plot the equal opportunities with S the sensitive attribute beeing the cluster belonging of each node.
+    Requires that each group has the same recall.
+    TP / (TP + FN) (per cluster true positive rate == recall)
+    Args:
+        per_class_rates (Dict): _description_
+        folder_path (_type_): _description_
+    """
+    clusters = list(per_class_rates.keys())
+    rec_0 = per_class_rates[clusters[0]]["TP"] / (
+        per_class_rates[clusters[0]]["TP"] + per_class_rates[clusters[0]]["FN"]
+    )
+    rec_1 = per_class_rates[clusters[1]]["TP"] / (
+        per_class_rates[clusters[1]]["TP"] + per_class_rates[clusters[1]]["FN"]
+    )
+
+    eq_op = abs(rec_0 - rec_1)
+
+    plt.plot(eq_op, "o", label=config)
+    plt.title("Per class equal opportunities")
+    plt.ylabel("Absolute difference in recall")
+    plt.xlabel("Classes")
+    plt.legend(loc="upper right")
+    plt.xticks(range(len(eq_op)), [CIFAR_CLASSES[i] for i in range(len(eq_op))], rotation=45)
+    plt.savefig(os.path.join(folder_path, "equal_opportunities.png"), dpi=300)
+
+
 def plot_parameters(path):
-    plt.figure(4)
+    plt.figure(100)
     folders = os.listdir(path)
     for folder in folders:
         folder_path = os.path.join(path, folder)

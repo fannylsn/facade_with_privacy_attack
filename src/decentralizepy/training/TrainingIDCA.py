@@ -32,6 +32,7 @@ class TrainingIDCA(Training):
         batch_size="",
         shuffle="",
         explore_models="",
+        layers_sharing="",
     ):
         """
         Constructor
@@ -75,6 +76,9 @@ class TrainingIDCA(Training):
         self.batch_size = utils.conditional_value(batch_size, "", int(1))
         self.shuffle = utils.conditional_value(shuffle, "", False)
         self.explore_models = utils.conditional_value(explore_models, "", False)
+        self.layers_sharing = utils.conditional_value(layers_sharing, "", False)
+
+        self.current_model_is_best = False
 
     def train(self, dataset: Dataset, treshold: float = 0.0):
         """
@@ -85,15 +89,22 @@ class TrainingIDCA(Training):
             treshold (float, optional): Treshold in [0, 1] to explore the space. If set to 0, no exploration is done.
         """
 
-        # chose the best model
-        self.choose_best_model(dataset, treshold=treshold)
+        # logic not to redo the computation if the model is already the best
+        if self.explore_models and random.uniform(0, 1) < treshold:
+            # chosing a random model
+            self.current_model_idx = random.randint(0, len(self.models) - 1)
+            self.models_losses = [self.eval_loss(model, dataset) for model in self.models]
+            self.current_model_loss = self.models_losses[self.current_model_idx]
+            self.current_model = self.models[self.current_model_idx]
+            self.current_model_is_best = False
+            logging.info(f"Random model chosen:{self.current_model_idx}")
+        else:
+            if not self.current_model_is_best:
+                # If the current model is not the best, we need to choose the best model
+                self.choose_best_model(dataset)
 
         # reset the optimizer to match the current model parameters
-        self.reset_optimizer(
-            self.optimizer_class(
-                self.current_model.parameters(), **self.optimizer_params
-            )
-        )
+        self.reset_optimizer(self.optimizer_class(self.current_model.parameters(), **self.optimizer_params))
 
         self.current_model.train()  # set the current model to train mode
 
@@ -102,7 +113,13 @@ class TrainingIDCA(Training):
         else:
             self.train_partial_data(dataset)
 
-    def choose_best_model(self, dataset: Dataset, treshold: float = 0.0):
+        if self.layers_sharing:
+            # share the layers of the trained model
+            layers = self.current_model.get_shared_layers()
+            for model in self.models:
+                model.set_shared_layers(layers)
+
+    def choose_best_model(self, dataset: Dataset):
         """
         Choose the best model from the list of models.
         Also, have a percentage of choosing a random model to explore the space.
@@ -111,16 +128,6 @@ class TrainingIDCA(Training):
             dataset (decentralizepy.datasets.Dataset): The dataset interface.
             treshold (float, optional): Treshold in [0, 1] to explore the space. If set to 0, no exploration is done.
         """
-        if self.explore_models:
-            if random.uniform(0, 1) < treshold:
-                # chosing a random model
-                self.current_model_idx = random.randint(0, len(self.models) - 1)
-                self.current_model_loss = None
-                self.models_losses = None
-                self.current_model = self.models[self.current_model_idx]
-                self.current_model_is_best = False
-                logging.info(f"Random model chosen:{self.current_model_idx}")
-                return
         # chosing the best model
         self.models_losses = [self.eval_loss(model, dataset) for model in self.models]
         self.current_model_loss = min(self.models_losses)
@@ -141,11 +148,7 @@ class TrainingIDCA(Training):
             epoch_loss = 0.0
             count = 0
             for data, target in trainset:
-                logging.debug(
-                    "Starting minibatch {} with num_samples: {}".format(
-                        count, len(data)
-                    )
-                )
+                logging.debug("Starting minibatch {} with num_samples: {}".format(count, len(data)))
                 logging.debug("Classes: {}".format(target))
                 epoch_loss += self._trainstep(data, target)
                 count += 1
@@ -164,11 +167,7 @@ class TrainingIDCA(Training):
             for data, target in trainset:
                 iter_loss += self._trainstep(data, target)
                 count += 1
-                logging.debug(
-                    "Minibatch: {}, total mean loss: {}".format(
-                        count, iter_loss / count
-                    )
-                )
+                logging.debug("Minibatch: {}, total mean loss: {}".format(count, iter_loss / count))
                 if count >= self.rounds:
                     logging.debug(f"Finished epoch {epoch} after {count} minibatchs")
                     count = 0
@@ -203,6 +202,27 @@ class TrainingIDCA(Training):
         logging.info(f"Loss after {count} iteration: {loss}")
         return loss
 
+    def compute_per_sample_loss(self, dataset: Dataset, loss_func):
+        """
+        Compute the per sample loss for the current model (the one that will be shared).
+
+        Args:
+            dataset (decentralizepy.datasets.Dataset): The training dataset.
+            loss_func: Loss function, must have reduction set to none.
+
+        Returns:
+            list: List containing the per sample loss
+        """
+        self.current_model.eval()
+        trainset = dataset.get_trainset(self.batch_size, self.shuffle)
+        with torch.no_grad():
+            per_sample_loss = []
+            for data, target in trainset:
+                output = self.current_model(data)
+                losses = loss_func(output, target)
+                per_sample_loss.extend(losses.tolist())
+        return per_sample_loss
+
     def _trainstep(self, data, target):
         """One training step on a minibatch.
 
@@ -220,7 +240,7 @@ class TrainingIDCA(Training):
         self.optimizer.step()
         return loss_val.item()
 
-    def get_current_best_model(self) -> Model:
+    def get_current_model(self) -> Model:
         """
         Get the current model
 

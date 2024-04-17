@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 import torchvision
 from torch import nn
@@ -147,3 +149,21 @@ class ConvNet(Model):
         x = self.fc3(x)
 
         return x
+
+    def get_shared_layers(self):
+        """Here define which layers are shared.
+
+        Returns:
+            List[torch.Tensor]: List of shared layer weights.
+        """
+        with torch.no_grad():
+            return [self.conv1.weight.data.clone(), self.conv2.weight.data.clone()]
+
+    def set_shared_layers(self, shared_layers: List[nn.Module]):
+        """Set the shared layers.
+
+        Args:
+            shared_layers (List[torch.Tensor]): List of shared layer weights.
+        """
+        self.conv1.weight.data = shared_layers[0]
+        self.conv2.weight.data = shared_layers[1]

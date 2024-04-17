@@ -99,50 +99,65 @@ if __name__ == "__main__":
     except FileNotFoundError:
         print("Normal run")
 
-    processes = []
-    if sm == m_id:
-        processes.append(
-            mp.Process(
-                target=FederatedParameterServerIFCA,
-                args=[
-                    sr,
-                    m_id,
-                    l_mapping,
-                    my_config,
-                    args.iterations,
-                    args.log_dir,
-                    args.weights_store_dir,
-                    log_level[args.log_level],
-                    args.test_after,
-                    args.train_evaluate_after,
-                    args.working_rate,  # bit weird to call that a rate, its a ratio
-                ],
+    while True:
+        # dict to handle early restart
+        manager = mp.Manager()
+        return_dict = manager.dict()
+        return_dict["early_stop"] = False
+
+        processes = []
+        if sm == m_id:
+            processes.append(
+                mp.Process(
+                    target=FederatedParameterServerIFCA,
+                    args=[
+                        sr,
+                        m_id,
+                        l_mapping,
+                        my_config,
+                        args.iterations,
+                        args.log_dir,
+                        args.weights_store_dir,
+                        log_level[args.log_level],
+                        args.test_after,
+                        args.train_evaluate_after,
+                        args.working_rate,  # bit weird to call that a rate, its a ratio
+                        return_dict,
+                    ],
+                )
             )
-        )
 
-    for r in range(0, procs_per_machine):
-        processes.append(
-            mp.Process(
-                target=DPSGDNodeFederatedIFCA,
-                args=[
-                    r,
-                    m_id,
-                    l_mapping,
-                    my_config,
-                    args.iterations,
-                    args.log_dir,
-                    args.weights_store_dir,
-                    log_level[args.log_level],
-                    args.test_after,
-                    args.train_evaluate_after,
-                    args.reset_optimizer,
-                    sr,
-                ],
+        for r in range(0, procs_per_machine):
+            processes.append(
+                mp.Process(
+                    target=DPSGDNodeFederatedIFCA,
+                    args=[
+                        r,
+                        m_id,
+                        l_mapping,
+                        my_config,
+                        args.iterations,
+                        args.log_dir,
+                        args.weights_store_dir,
+                        log_level[args.log_level],
+                        args.test_after,
+                        args.train_evaluate_after,
+                        args.reset_optimizer,
+                        sr,
+                    ],
+                )
             )
-        )
 
-    for p in processes:
-        p.start()
+        for p in processes:
+            p.start()
 
-    for p in processes:
-        p.join()
+        for p in processes:
+            p.join()
+
+        if not return_dict["early_stop"]:
+            print("Normal stop")
+            break
+
+        # new seed because of fail to settle
+        my_config["DATASET"]["random_seed"] = int(my_config["DATASET"]["random_seed"]) + 1
+        print("Early restart, new seed is: ", my_config["DATASET"]["random_seed"])

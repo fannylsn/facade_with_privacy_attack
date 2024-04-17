@@ -14,3 +14,4 @@ eval/data**
 build
 
 **/.venv/
+**/notebooks/

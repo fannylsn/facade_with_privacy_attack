@@ -90,9 +90,7 @@ class RotatedDataset(Dataset):
         rng = Random()
         rng.seed(self.random_seed)
         if self.sizes is None:
-            self.clusters_idx = [
-                i % self.number_of_clusters for i in range(self.num_partitions)
-            ]
+            self.clusters_idx = [i % self.number_of_clusters for i in range(self.num_partitions)]
         else:
             self.clusters_idx = []
             for idx, size in enumerate(self.sizes):
@@ -112,19 +110,11 @@ class RotatedDataset(Dataset):
         if self.number_of_clusters == 1:
             return torchvision.transforms.RandomRotation(degrees=[0, 0])
         elif self.number_of_clusters == 2:
-            return torchvision.transforms.RandomRotation(
-                degrees=[180 * self.cluster, 180 * self.cluster]
-            )
+            return torchvision.transforms.RandomRotation(degrees=[180 * self.cluster, 180 * self.cluster])
         elif self.number_of_clusters == 4:
-            return torchvision.transforms.RandomRotation(
-                degrees=[90 * self.cluster, 90 * self.cluster]
-            )
+            return torchvision.transforms.RandomRotation(degrees=[90 * self.cluster, 90 * self.cluster])
         else:
-            raise ValueError(
-                "Rotation transform not implemented for {} clusters".format(
-                    self.number_of_clusters
-                )
-            )
+            raise ValueError("Rotation transform not implemented for {} clusters".format(self.number_of_clusters))
 
     def load_trainset(self):
         """
@@ -316,11 +306,7 @@ class RotatedDataset(Dataset):
                 accuracy = 100.0
             logging.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
 
-        accuracy = (
-            100
-            * float(totals_correct[best_model_idx])
-            / totals_predicted[best_model_idx]
-        )
+        accuracy = 100 * float(totals_correct[best_model_idx]) / totals_predicted[best_model_idx]
         final_loss_val = loss_vals[best_model_idx] / count
         logging.info("Overall test accuracy is: {:.1f} %".format(accuracy))
 
@@ -401,11 +387,7 @@ class RotatedDataset(Dataset):
                 accuracy = 100.0
             logging.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
 
-        accuracy = (
-            100
-            * float(totals_correct[best_model_idx])
-            / totals_predicted[best_model_idx]
-        )
+        accuracy = 100 * float(totals_correct[best_model_idx]) / totals_predicted[best_model_idx]
         final_loss_val = loss_vals[best_model_idx] / count
         logging.info("Overall test accuracy is: {:.1f} %".format(accuracy))
 
@@ -414,3 +396,36 @@ class RotatedDataset(Dataset):
             return accuracy, final_loss_val
 
         return accuracy, final_loss_val, best_model_idx
+
+    def compute_per_sample_loss(
+        self, model: Model, loss_func, validation: bool = False, log_loss: bool = False, log_pred_true: bool = False
+    ):
+        """
+        Compute the per sample loss for the current model (the one that will be shared).
+
+        Args:
+            model (decentralizepy.models.Model): The model to evaluate.
+            loss_func (torch.nn.loss): The loss function to use
+            validation (bool): True if the validation set should be used, False otherwise
+        """
+        model.eval()
+        if validation:
+            dataset = self.get_validationset()
+        else:
+            dataset = self.get_testset()
+
+        with torch.no_grad():
+            per_sample_loss = []
+            per_sample_pred = []
+            per_sample_true = []
+            for elems, labels in dataset:
+                outputs = model(elems)
+                loss_val = loss_func(outputs, labels)
+                _, predictions = torch.max(outputs, 1)
+                if log_loss:
+                    per_sample_loss.extend(loss_val.tolist())
+                if log_pred_true:
+                    per_sample_pred.extend(predictions.tolist())
+                    per_sample_true.extend(labels.tolist())
+
+        return per_sample_loss, per_sample_pred, per_sample_true

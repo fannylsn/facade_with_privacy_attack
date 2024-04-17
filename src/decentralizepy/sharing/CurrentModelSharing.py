@@ -1,3 +1,4 @@
+import copy
 import importlib
 import logging
 from typing import List
@@ -24,6 +25,7 @@ class CurrentModelSharing(Sharing):
         models: List[Model],
         dataset,
         log_dir,
+        layers_sharing=False,
         compress=False,
         compression_package=None,
         compression_class=None,
@@ -64,6 +66,8 @@ class CurrentModelSharing(Sharing):
         self.dataset = dataset
         self.communication_round = 0
         self.log_dir = log_dir
+
+        self.layers_sharing = layers_sharing
 
         self.shapes = []
         self.lens = []
@@ -115,16 +119,28 @@ class CurrentModelSharing(Sharing):
                 del data["iteration"]
                 del data["model_idx"]
                 del data["CHANNEL"]
-                logging.debug(
-                    "Averaging model from neighbor {} of iteration {}".format(
-                        n, iteration
-                    )
-                )
+                logging.debug("Averaging model from neighbor {} of iteration {}".format(n, iteration))
                 data = self.deserialized_model(data)
                 if model_idx in received_models:
                     received_models[model_idx].append(data)
                 else:
                     received_models[model_idx] = [data]
+
+            if self.layers_sharing:
+                # average of the common layers
+                all_recieved = []
+                for models in received_models.values():
+                    all_recieved.extend(models)
+                weight = 1 / (len(all_recieved) + 1)
+                # initialize
+                # 0 = 1 ??
+                shared_layers = [weight * param for param in self.models[0].get_shared_layers()]
+                tmp_model = copy.deepcopy(self.models[0])
+                for state_dict in all_recieved:
+                    tmp_model.load_state_dict(state_dict)
+                    other_layers = tmp_model.get_shared_layers()
+                    for i, layer in enumerate(shared_layers):
+                        layer += weight * other_layers[i]
 
             # iterate on all the current models of the node
             for idx, model in enumerate(self.models):
@@ -144,6 +160,11 @@ class CurrentModelSharing(Sharing):
                             total[key] += value * weight
                 # assign the new state to the model
                 model.load_state_dict(total)
+
+            if self.layers_sharing:
+                # set the shared layers
+                for model in self.models:
+                    model.set_shared_layers(shared_layers)
 
         self._post_step()
         self.communication_round += 1
