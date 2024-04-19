@@ -1,3 +1,4 @@
+import copy
 import logging
 import random
 from typing import List
@@ -103,6 +104,11 @@ class TrainingIDCA(Training):
                 # If the current model is not the best, we need to choose the best model
                 self.choose_best_model(dataset)
 
+        model_leaking = False
+        if model_leaking:
+            a = 2.0
+            self.leak_model(a)
+
         # reset the optimizer to match the current model parameters
         self.reset_optimizer(self.optimizer_class(self.current_model.parameters(), **self.optimizer_params))
 
@@ -135,6 +141,24 @@ class TrainingIDCA(Training):
         self.current_model = self.models[self.current_model_idx]
         self.current_model_is_best = True
         logging.info(f"Best model chosen:{self.current_model_idx}")
+
+    def leak_model(self, a=1.0):
+        softmax = torch.nn.Softmax(dim=0)
+        # scaled softmax
+        weights = softmax(-torch.tensor(self.models_losses) * a)
+        old_models = [copy.deepcopy(model) for model in self.models]
+
+        for model in self.models:
+            new_state_dict = {}
+            for i, old_model in enumerate(old_models):
+                old_state_dict = old_model.state_dict()
+                for key in old_state_dict:
+                    if key in new_state_dict:
+                        new_state_dict[key] += weights[i] * old_state_dict[key].detach().clone()
+                    else:
+                        new_state_dict[key] = weights[i] * old_state_dict[key].detach().clone()
+
+            model.load_state_dict(new_state_dict)
 
     def train_full(self, dataset: Dataset):
         """

@@ -440,7 +440,13 @@ class DPSGDNodeIDCA(Node):
             self.iteration = iteration
 
             # best model choice in done in trainer
-            treshold_explo = np.exp(-iteration * 3 / self.iterations)
+            if iteration < self.iterations / 2:
+                treshold_explo = np.exp(-iteration * 6 / self.iterations)
+            else:
+                treshold_explo = 0.0
+            # treshold_explo = np.maximum(1 - iteration * 2 / self.iterations, 0.0)
+            # treshold_explo = np.exp(-iteration * 3 / self.iterations)
+
             self.trainer.train(self.dataset, treshold_explo)
 
             # sharing

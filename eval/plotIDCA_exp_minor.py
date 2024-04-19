@@ -27,7 +27,7 @@ CONFIGS_COMP = {
     "DPSGD1": "cluster 1 with DPSGD",
 }
 
-COLORS = {"IDCA": "o", "IFCA": "g", "DPSGD": "b"}
+# COLORS = {"IDCA": "r", "IFCA": "g", "DPSGD": "b"}
 
 
 def plot_results(folder_path, data_machine="machine0", data_node=0):
@@ -73,6 +73,7 @@ def get_data_from_exp(folder_path):
 
             files = os.listdir(mf_path)
             files = [f for f in files if f.endswith("_results.json")]
+            files = [f for f in files if not f.startswith("-1")]  # remove server in IFCA
             for f in files:
                 filepath = os.path.join(mf_path, f)
                 with open(filepath, "r") as inf:
@@ -237,10 +238,9 @@ def plot_results_3_exp(out_folder, folder_path_IDCA, folder_path_IFCA, folder_pa
     all_results_DPSGD, _ = get_data_from_exp(folder_path_DPSGDnIID)
 
     node_types = ["IDCA", "IFCA", "DPSGD"]
-    metrics = ["demo_parity", "equ_oppo"]
-    func = {"demo_parity": compute_demo_parity, "equ_oppo": compute_equ_oppo}
+    metric_funcs = {"demo_parity": compute_demo_parity, "equ_oppo": compute_equ_oppo, "eq_odds": compute_equalized_odds}
 
-    all_test_metrics = {m: {config: {} for config in all_results_IDCA.keys()} for m in metrics}
+    all_test_metrics = {m: {config: {} for config in all_results_IDCA.keys()} for m in metric_funcs.keys()}
     # TODO add loss, val, train...
     for (config, data_IDCA), (_, data_IFCA), (_, data_DPSGD) in zip(
         all_results_IDCA.items(), all_results_IFCA.items(), all_results_DPSGD.items()
@@ -252,17 +252,17 @@ def plot_results_3_exp(out_folder, folder_path_IDCA, folder_path_IFCA, folder_pa
                 for res in results:
                     res["per_sample_pred_test"] = {k: json.loads(v) for k, v in res["per_sample_pred_test"].items()}
                     res["per_sample_true_test"] = {k: json.loads(v) for k, v in res["per_sample_true_test"].items()}
-            for metric in metrics:
+            for metric in metric_funcs.keys():
                 temp_metric = []
                 # iterate on all same exp with different seeds
                 for results in data.values():
                     # now results is the results of one exp, with config config
-                    _, per_cluster_rates = compute_rates(results)
-                    temp_metric.append(func[metric](per_cluster_rates))  # call to correct func
+                    per_class_rates, per_cluster_rates = compute_rates(results)
+                    temp_metric.append(metric_funcs[metric](per_cluster_rates, per_class_rates))  # call to correct func
 
                 all_test_metrics[metric][config][node_type] = {"mean": np.mean(temp_metric), "std": np.std(temp_metric)}
 
-    for metric in metrics:
+    for metric in metric_funcs.keys():
         configs = list(all_test_metrics[metric].keys())
         node_types = list(all_test_metrics[metric][configs[0]].keys())
         values = [
@@ -276,10 +276,9 @@ def plot_results_3_exp(out_folder, folder_path_IDCA, folder_path_IFCA, folder_pa
         # contine
         index = np.arange(len(configs))
 
-        for node_type, vals in zip(node_types, values):
-            plt.errorbar(
-                index, vals, std_dev, fmt="o", linewidth=2, capsize=6, ecolor=COLORS[node_type], label=node_type
-            )
+        plt.figure()
+        for node_type, vals, std in zip(node_types, values, std_dev):
+            plt.errorbar(index, vals, std, fmt="o", linewidth=2, capsize=6, label=node_type)
 
         plt.xlabel("Ratio of majority (cluster 0) to minority (cluster 1)")
         plt.ylabel(metric)
@@ -291,43 +290,55 @@ def plot_results_3_exp(out_folder, folder_path_IDCA, folder_path_IFCA, folder_pa
         plt.savefig(os.path.join(out_folder, f"{metric}_per_node_type_per_config.png"), dpi=300)
 
 
-def compute_demo_parity(per_clust_rates):
+def compute_demo_parity(per_clust_rates, per_class_rates):
+    tot_demo_par = 0
     clusters = list(per_clust_rates.keys())
-    pos_preds_0 = per_clust_rates[clusters[0]]["TP"] + per_clust_rates[clusters[0]]["FP"]
-    tot_0 = np.sum([per_clust_rates[clusters[0]][k] for k in per_clust_rates[clusters[0]].keys()])
-    pos_preds_1 = per_clust_rates[clusters[1]]["TP"] + per_clust_rates[clusters[1]]["FP"]
-    tot_1 = np.sum([per_clust_rates[clusters[1]][k] for k in per_clust_rates[clusters[1]].keys()])
+    classes = list(range(len(per_class_rates[clusters[0]]["TP"])))
+    for class_ in classes:
+        pos_preds_0 = per_class_rates[clusters[0]]["TP"][class_] + per_class_rates[clusters[0]]["FP"][class_]
+        tot_0 = np.sum([per_class_rates[clusters[0]][k][class_] for k in per_class_rates[clusters[0]].keys()])
+        pos_preds_1 = per_class_rates[clusters[1]]["TP"][class_] + per_class_rates[clusters[1]]["FP"][class_]
+        tot_1 = np.sum([per_class_rates[clusters[1]][k][class_] for k in per_class_rates[clusters[1]].keys()])
 
-    demo_parity = abs(pos_preds_0 / tot_0 - pos_preds_1 / tot_1)
-    return demo_parity
+        demo_parity = abs(pos_preds_0 / tot_0 - pos_preds_1 / tot_1)
+        tot_demo_par += demo_parity
+    return tot_demo_par / len(classes)
 
 
-def compute_equ_oppo(per_clust_rates):
+def compute_equ_oppo(per_clust_rates, per_class_rates):
+    tot_equ_oppo = 0
     clusters = list(per_clust_rates.keys())
-    rec_0 = per_clust_rates[clusters[0]]["TP"] / (
-        per_clust_rates[clusters[0]]["TP"] + per_clust_rates[clusters[0]]["FN"]
-    )
-    rec_1 = per_clust_rates[clusters[1]]["TP"] / (
-        per_clust_rates[clusters[1]]["TP"] + per_clust_rates[clusters[1]]["FN"]
-    )
+    classes = list(range(len(per_class_rates[clusters[0]]["TP"])))
+    for class_ in classes:
+        rec_0 = per_clust_rates[clusters[0]]["TP"][class_] / (
+            per_clust_rates[clusters[0]]["TP"][class_] + per_clust_rates[clusters[0]]["FN"][class_]
+        )
+        rec_1 = per_clust_rates[clusters[1]]["TP"][class_] / (
+            per_clust_rates[clusters[1]]["TP"][class_] + per_clust_rates[clusters[1]]["FN"][class_]
+        )
 
-    eq_op = abs(rec_0 - rec_1)
-    return eq_op
+        eq_op = abs(rec_0 - rec_1)
+        tot_equ_oppo += eq_op
+    return eq_op / len(classes)
 
 
-def compute_equalized_odds(per_clust_rates):
+def compute_equalized_odds(per_clust_rates, per_class_rates):
+    tot_equ_odds = 0
     clusters = list(per_clust_rates.keys())
-    fpr_0 = per_clust_rates[clusters[0]]["FP"] / (
-        per_clust_rates[clusters[0]]["TN"] + per_clust_rates[clusters[0]]["FP"]
-    )
-    fpr_1 = per_clust_rates[clusters[1]]["FP"] / (
-        per_clust_rates[clusters[1]]["TN"] + per_clust_rates[clusters[1]]["FP"]
-    )
+    classes = list(range(len(per_class_rates[clusters[0]]["TP"])))
+    for class_ in classes:
+        fpr_0 = per_clust_rates[clusters[0]]["FP"][class_] / (
+            per_clust_rates[clusters[0]]["TN"][class_] + per_clust_rates[clusters[0]]["FP"][class_]
+        )
+        fpr_1 = per_clust_rates[clusters[1]]["FP"][class_] / (
+            per_clust_rates[clusters[1]]["TN"][class_] + per_clust_rates[clusters[1]]["FP"][class_]
+        )
 
-    eq_odds = abs(fpr_0 - fpr_1)
-    eq_op = compute_equ_oppo(per_clust_rates)
+        temp = abs(fpr_0 - fpr_1)
+        eq_op = compute_equ_oppo(per_clust_rates, per_class_rates)
+        tot_equ_odds += temp + eq_op
     # verif
-    return eq_op + eq_odds
+    return tot_equ_odds / len(classes)
 
 
 if __name__ == "__main__":

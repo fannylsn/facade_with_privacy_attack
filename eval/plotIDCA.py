@@ -42,6 +42,28 @@ def get_stats(data):
     return mean_dict, stdev_dict, min_dict, max_dict
 
 
+def get_per_cluster_stats(results, metric="test_loss"):
+    assert len(results) > 0
+    clusters = set([int(x["cluster_assigned"]) for x in results])
+    final_data = {}
+    for clust in clusters:
+        mean_dict, stdev_dict, min_dict, max_dict = {}, {}, {}, {}
+        for key in results[0][metric].keys():
+            # key == iter
+            all_nodes = [i[metric][key] for i in results if i["cluster_assigned"] == clust]
+            all_nodes = np.array(all_nodes)
+            mean = np.mean(all_nodes)
+            std = np.std(all_nodes)
+            min = np.min(all_nodes)
+            max = np.max(all_nodes)
+            mean_dict[int(key)] = mean
+            stdev_dict[int(key)] = std
+            min_dict[int(key)] = min
+            max_dict[int(key)] = max
+        final_data[clust] = [mean_dict, stdev_dict, min_dict, max_dict]
+    return final_data
+
+
 def plot(means, stdevs, mins, maxs, title, label, loc, xlabel="communication rounds"):
     plt.title(title)
     plt.xlabel(xlabel)
@@ -50,6 +72,19 @@ def plot(means, stdevs, mins, maxs, title, label, loc, xlabel="communication rou
     err = np.array(list(stdevs.values()))
     plt.plot(x_axis, y_axis, label=label)
     plt.fill_between(x_axis, y_axis - err, y_axis + err, alpha=0.4)
+    plt.legend(loc=loc)
+
+
+def per_cluster_plot(final_data, title, loc, xlabel="communication rounds"):
+    for clust, data in final_data.items():
+        means, stdevs, mins, maxs = data
+        x_axis = np.array(list(means.keys()))
+        y_axis = np.array(list(means.values()))
+        err = np.array(list(stdevs.values()))
+        plt.plot(x_axis, y_axis, label=f"cluster {clust}")
+        plt.fill_between(x_axis, y_axis - err, y_axis + err, alpha=0.4)
+    plt.xlabel(xlabel)
+    plt.title(title)
     plt.legend(loc=loc)
 
 
@@ -118,6 +153,10 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
     means, stdevs, mins, maxs = get_stats([x["train_loss"] for x in results])
     plot(means, stdevs, mins, maxs, "Training Loss", folder_path, "upper right")
 
+    plt.figure(111)
+    final_data = get_per_cluster_stats(results, metric="train_loss")
+    per_cluster_plot(final_data, "Training Loss per cluster", "upper right")
+
     # handle the last artificial iteration for all reduce
     if list(iter(b_means.keys())) != list(iter(means.keys())):
         b_means[list(iter(means.keys()))[-1]] = np.nan
@@ -161,6 +200,11 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         list(means.keys()),
         columns=["mean", "std", "nr_nodes", "total_bytes"],
     )
+
+    plt.figure(22)
+    final_data = get_per_cluster_stats(results, metric="test_loss")
+    per_cluster_plot(final_data, "Testing Loss per cluster", "upper right")
+
     plt.figure(12)
     means = replace_dict_key(means, b_means)
     plot(
@@ -189,6 +233,11 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         list(means.keys()),
         columns=["mean", "std", "nr_nodes", "total_bytes"],
     )
+
+    plt.figure(33)
+    final_data = get_per_cluster_stats(results, metric="test_acc")
+    per_cluster_plot(final_data, "Testing accuracy per cluster", "upper right")
+
     plt.figure(13)
     means = replace_dict_key(means, b_means)
     plot(
@@ -242,10 +291,17 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
     plt.figure(1)
     plt.savefig(os.path.join(folder_path, "train_loss.png"), dpi=300)
+    plt.figure(111)
+    plt.savefig(os.path.join(folder_path, "train_loss_per_cluster.png"), dpi=300)
     plt.figure(2)
     plt.savefig(os.path.join(folder_path, "test_loss.png"), dpi=300)
+    plt.figure(22)
+    plt.savefig(os.path.join(folder_path, "test_loss_per_cluster.png"), dpi=300)
     plt.figure(3)
     plt.savefig(os.path.join(folder_path, "test_acc.png"), dpi=300)
+    plt.figure(33)
+    plt.savefig(os.path.join(folder_path, "test_acc_per_cluster.png"), dpi=300)
+
     # Plot total_bytes
     plt.figure(4)
     plt.title("Data Shared")
@@ -308,7 +364,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         plt.figure(11)
         plot_per_cluster_AUC(results, folder_path)
 
-    if "per_sample_pred_test" in results[0].keys():
+    if "per_sample_pred_test" in results[0].keys() and results[0]["per_sample_pred_test"]:
         for res in results:
             res["per_sample_pred_test"] = {k: json.loads(v) for k, v in res["per_sample_pred_test"].items()}
             res["per_sample_true_test"] = {k: json.loads(v) for k, v in res["per_sample_true_test"].items()}
@@ -603,7 +659,7 @@ def compute_rates(results: List[Dict[str, Any]]):
                 per_cluster_rates[cluster]["TN"].append(tn)
                 per_cluster_rates[cluster]["FP"].append(fp)
                 per_cluster_rates[cluster]["FN"].append(fn)
-    per_class_rates = {k: {kk: np.sum(vv, axis=0) for kk, vv in v.items()} for k, v in per_cluster_rates.items()}
+    per_class_rates = {k: {kk: np.mean(vv, axis=0) for kk, vv in v.items()} for k, v in per_cluster_rates.items()}
     per_cluster_rates = {k: {kk: np.sum(vv) for kk, vv in v.items()} for k, v in per_class_rates.items()}
     return per_class_rates, per_cluster_rates
 
