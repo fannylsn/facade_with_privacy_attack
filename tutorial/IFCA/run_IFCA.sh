@@ -6,7 +6,7 @@ decpy_path=./eval # Path to eval folder
 run_path=./eval/data # Path to the folder where the config file will be copied and the results will be stored
 config_file=configCIFAR.ini
 script_path=./tutorial/IFCA # Path to the folder where the run_IFCA.sh is located
-cp $script_path/$config_file $run_path
+cp $script_path/configs/$config_file $run_path
 
 env_python=./.venv/decentralizepy_env/bin/python
 machines=1 # number of machines in the runtime

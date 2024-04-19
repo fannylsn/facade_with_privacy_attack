@@ -6,7 +6,7 @@ decpy_path=./eval # Path to eval folder
 run_path=./eval/data # Path to the folder where the graph and config file will be copied and the results will be stored
 config_file=config_DPSGDnIID_CIFAR.ini
 script_path=./tutorial/DPSGDwithNonIID # Path to the folder where the run_IDCAwPS.sh is located
-cp  $script_path/$config_file $run_path
+cp  $script_path/configs/$config_file $run_path
 
 # env_python=~/miniconda3/envs/decpy/bin/python3 # Path to python executable of the environment | conda recommended
 # env_python=~/.local/share/virtualenvs/decentralizepy-Ewz13z8M/bin/python
