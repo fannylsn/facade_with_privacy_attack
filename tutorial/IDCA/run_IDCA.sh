@@ -4,7 +4,7 @@
 
 decpy_path=./eval # Path to eval folder
 run_path=./eval/data # Path to the folder where the graph and config file will be copied and the results will be stored
-config_file=configCIFAR.ini
+config_file=configCIFARlabel.ini
 script_path=./tutorial/IDCA # Path to the folder where the run_IDCAwPS.sh is located
 cp $script_path/configs/$config_file $run_path
 

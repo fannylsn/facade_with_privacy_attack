@@ -16,11 +16,7 @@ from plotIDCA import (
     compute_rates,
 )
 
-CONFIGS = [
-    "IFCA",
-    "DPSGD",
-    "IDCA",
-]
+CONFIGS = ["leak_2", "leak_3", "leak_1", "leak_5", "no_leak"]
 
 
 def get_stats(data):
@@ -95,6 +91,13 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             if name.lower() in str(subdir).lower():
                 config = name
                 break
+
+        # remoove bigger iter
+        for x in results:
+            for key in x.keys():
+                if isinstance(x[key], dict):
+                    x[key] = {k: v for k, v in x[key].items() if int(k) <= 81}
+
         # Plotting bytes over time
         plt.figure(10)
         b_means, stdevs, mins, maxs = get_stats([x["total_bytes"] for x in results])

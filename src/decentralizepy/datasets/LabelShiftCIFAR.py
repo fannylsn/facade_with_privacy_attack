@@ -5,7 +5,7 @@ import torchvision
 from torch import nn
 from torch.nn import functional as F
 
-from decentralizepy.datasets.RotatedDataset import RotatedDataset
+from decentralizepy.datasets.LabelShiftDataset import LabelShiftDataset
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.models.Model import Model
 
@@ -24,9 +24,9 @@ CLASSES = {
 }
 
 
-class RotatedCIFAR(RotatedDataset):
+class LabelShiftCIFAR(LabelShiftDataset):
     """
-    Class for the Rotated CIFAR dataset
+    Class for the label shifted Cifar dataset
     """
 
     def __init__(
@@ -43,6 +43,8 @@ class RotatedCIFAR(RotatedDataset):
         validation_source="",
         validation_size="",
         number_of_clusters: int = 1,
+        partition_niid: str = "dirichlet",
+        alpha: float = 0.1,
     ):
         """
         Constructor which reads the data files, instantiates and partitions the dataset
@@ -88,6 +90,8 @@ class RotatedCIFAR(RotatedDataset):
             validation_source,
             validation_size,
             number_of_clusters,
+            partition_niid,
+            alpha,
         )
 
         self.num_classes = NUM_CLASSES
@@ -96,7 +100,6 @@ class RotatedCIFAR(RotatedDataset):
             [
                 torchvision.transforms.ToTensor(),
                 torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                self.get_rotation_transform(),
             ]
         )
 

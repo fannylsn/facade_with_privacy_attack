@@ -51,6 +51,11 @@ do
 
     for seed in ${seeds[@]}
     do
+        if { [ $seed -eq 12 ] || [ $seed -eq 34 ] || [ $seed -eq 56 ]; } && [ $config -eq 4 ]
+        then
+            continue
+        fi
+
         echo "Seed $seed"
         $python_bin/crudini --set $run_path/$config_file DATASET random_seed $seed
 
