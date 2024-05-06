@@ -4,7 +4,7 @@
 
 decpy_path=./eval # Path to eval folder
 run_path=./eval/data # Path to the folder where the graph and config file will be copied and the results will be stored
-config_file=config_DPSGDnIID_CIFAR.ini
+config_file=config_CIFAR_dpsgd.ini
 script_path=./tutorial/DPSGDwithNonIID # Path to the folder where the run_IDCAwPS.sh is located
 cp  $script_path/configs/$config_file $run_path
 
@@ -12,15 +12,15 @@ cp  $script_path/configs/$config_file $run_path
 # env_python=~/.local/share/virtualenvs/decentralizepy-Ewz13z8M/bin/python
 env_python=./.venv/decentralizepy_env/bin/python
 machines=1 # number of machines in the runtime
-iterations=80
-test_after=4
+iterations=600
+test_after=20
 eval_file=$decpy_path/testingDPSGDnIID.py # decentralized driver code (run on each machine)
 log_level=INFO #INFO # DEBUG | INFO | WARN | CRITICAL
 
 m=0 # machine id corresponding consistent with ip.json
 echo M is $m
 
-procs_per_machine=18 # 16 processes on 1 machine
+procs_per_machine=20 # 16 processes on 1 machine
 echo procs per machine is $procs_per_machine
 
 log_dir=$run_path/$(date '+%Y-%m-%dT%H:%M')_dpsgd/machine$m # in the eval folder

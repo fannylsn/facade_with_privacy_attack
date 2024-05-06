@@ -429,19 +429,20 @@ class FederatedParameterServerIFCA(Node):
 
             # check for early restart
             if self.return_dict is not None:
-                if iteration != 0:
-                    # check if some model is static -> means he will never be train again
-                    for prev, curr in zip(self.prev_models, self.models):
-                        static = True
-                        for p1, p2 in zip(prev.parameters(), curr.parameters()):
-                            if p1.data.ne(p2.data).sum() > 0:
-                                static = False
-                                break
-                        if static:
-                            self.return_dict["early_stop"] = True
-                            self.disconnect_neighbors()
-                            return
-                self.prev_models = [copy.deepcopy(model) for model in self.models]
+                with torch.no_grad():
+                    if iteration != 0:
+                        # check if some model is static -> means he will never be train again
+                        for prev, curr in zip(self.prev_models, self.models):
+                            static = True
+                            for p1, p2 in zip(prev.parameters(), curr.parameters()):
+                                if p1.data.ne(p2.data).sum() > 0:
+                                    static = False
+                                    break
+                            if static:
+                                self.return_dict["early_stop"] = True
+                                self.disconnect_neighbors()
+                                return
+                    self.prev_models = [copy.deepcopy(model) for model in self.models]
 
         self.disconnect_neighbors()
         logging.info("Storing final weight of each model")

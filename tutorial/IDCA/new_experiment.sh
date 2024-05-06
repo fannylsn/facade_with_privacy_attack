@@ -12,14 +12,14 @@ eval_file=$decpy_path/testingIDCAwPS.py # decentralized driver code (run on each
 machines=1 # number of machines in the runtime
 iterations=80
 test_after=4
-log_level=INFO #INFO # DEBUG | INFO | WARN | CRITICAL
+log_level=DEBUG #INFO # DEBUG | INFO | WARN | CRITICAL
 procs_per_machine=20
 
 m=0 # machine id corresponding consistent with ip.json
 
 echo "All started at $(date '+%Y-%m-%dT%H:%M')!"
 
-config_file=config_new_exp.ini
+config_file=config_new_exp_labels_idca.ini
 config_file_path=$script_path/configs/$config_file
 configs=(1 2 3)
 seeds=(1122 3344 5566 7788) # (12 34 56 78)
@@ -29,13 +29,13 @@ do
     echo "Config $config"
     case $config in
         1)
-            $python_bin/crudini --set $config_file_path DATASET sizes "[[1/18]*10,[1/18]*10]"
+            $python_bin/crudini --set $config_file_path DATASET sizes "[[1/20]*10,[1/20]*10]"
             ;;
         2)
-            $python_bin/crudini --set $config_file_path DATASET sizes "[[1/18]*15,[1/16]*5]"
+            $python_bin/crudini --set $config_file_path DATASET sizes "[[1/20]*15,[1/20]*5]"
             ;;
         3)
-            $python_bin/crudini --set $config_file_path DATASET sizes "[[1/18]*18,[1/18]*2]"
+            $python_bin/crudini --set $config_file_path DATASET sizes "[[1/20]*18,[1/20]*2]"
             ;;
     esac
 

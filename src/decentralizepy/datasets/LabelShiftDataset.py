@@ -139,7 +139,8 @@ class LabelShiftDataset(DatasetClustered):
             for y in random_class_order:
                 all_trainset.extend([(a, y) for a in train_data[y]])
 
-            kshard_sizes = [sum(fracs) / self.number_of_clusters for fracs in self.sizes]
+            # kshard_sizes = [sum(fracs) / self.number_of_clusters for fracs in self.sizes]
+            kshard_sizes = [1.0 / self.number_of_clusters] * self.number_of_clusters
             # CHECK sizes
             self.data_partitioner = KShardDataPartitioner(all_trainset, kshard_sizes, shards=1, seed=self.random_seed)
 

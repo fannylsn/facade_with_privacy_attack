@@ -76,7 +76,7 @@ class DatasetClustered(Dataset):
             validation_source,
             validation_size,
         )
-
+        self.num_nodes = self.num_partitions  # more explicit
         self.num_classes = None  # to be set by the child class
 
         self.number_of_clusters = number_of_clusters
@@ -90,7 +90,7 @@ class DatasetClustered(Dataset):
         rng = Random()
         rng.seed(self.random_seed)
         if self.sizes is None:
-            self.clusters_idx = [i % self.number_of_clusters for i in range(self.num_partitions)]
+            self.clusters_idx = [i % self.number_of_clusters for i in range(self.num_nodes)]
         else:
             self.clusters_idx = []
             for idx, size in enumerate(self.sizes):
@@ -222,7 +222,7 @@ class DatasetClustered(Dataset):
                     count += 1
                     _, predictions = torch.max(outputs, 1)
                     for label, prediction in zip(labels, predictions):
-                        logging.debug("{} predicted as {}".format(label, prediction))
+                        # logging.debug("{} predicted as {}".format(label, prediction))
                         if label == prediction:
                             correct_pred_per_cls[label] += 1
                             total_correct += 1
@@ -303,7 +303,7 @@ class DatasetClustered(Dataset):
                     count += 1
                     _, predictions = torch.max(outputs, 1)
                     for label, prediction in zip(labels, predictions):
-                        logging.debug("{} predicted as {}".format(label, prediction))
+                        # logging.debug("{} predicted as {}".format(label, prediction))
                         if label == prediction:
                             correct_pred_per_cls[label] += 1
                             total_correct += 1
@@ -369,3 +369,26 @@ class DatasetClustered(Dataset):
                     per_sample_true.extend(labels.tolist())
 
         return per_sample_loss, per_sample_pred, per_sample_true
+
+    def get_model_loss_on_trainset(self, model: Model, loss_func):
+        """
+        Compute the loss of the model on the training set.
+
+        Args:
+            model (decentralizepy.models.Model): The model to evaluate.
+            loss_func (torch.nn.loss): The loss function to use
+
+        Returns:
+            float: The loss of the model on the training set.
+        """
+        model.eval()
+        dataset = self.get_trainset()
+        with torch.no_grad():
+            loss_val = 0.0
+            count = 0
+            for elems, labels in dataset:
+                outputs = model(elems)
+                loss_val += loss_func(outputs, labels).item()
+                count += 1
+
+        return loss_val / count

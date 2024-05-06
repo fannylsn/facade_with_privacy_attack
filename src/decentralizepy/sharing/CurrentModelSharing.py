@@ -97,7 +97,7 @@ class CurrentModelSharing(Sharing):
         data = self.serialized_model()
         my_uid = self.mapping.get_uid(self.rank, self.machine_id)
         data["model_idx"] = model_idx
-        data["degree"] = degree if degree != None else len(self.graph.neighbors(my_uid))
+        data["degree"] = degree if degree is not None else len(self.graph.neighbors(my_uid))
         data["iteration"] = self.communication_round
         return data
 

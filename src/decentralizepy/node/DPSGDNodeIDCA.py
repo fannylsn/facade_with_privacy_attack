@@ -21,6 +21,7 @@ from decentralizepy.node.Node import Node
 from decentralizepy.sharing.CurrentModelSharing import CurrentModelSharing
 from decentralizepy.sharing.Sharing import Sharing  # noqa: F401
 from decentralizepy.training.TrainingIDCA import TrainingIDCA  # noqa: F401
+from decentralizepy.utils_learning_rates import get_lr_step_7_9
 
 
 class DPSGDNodeIDCA(Node):
@@ -336,7 +337,7 @@ class DPSGDNodeIDCA(Node):
         """
         optimizer_module = importlib.import_module(optimizer_configs["optimizer_package"])
         self.optimizer_class = getattr(optimizer_module, optimizer_configs["optimizer_class"])
-        self.optimizer_params = utils.remove_keys(optimizer_configs, ["optimizer_package", "optimizer_class"])
+        self.original_optimizer_params = utils.remove_keys(optimizer_configs, ["optimizer_package", "optimizer_class"])
 
     def init_trainer(self, train_configs):
         """
@@ -374,7 +375,7 @@ class DPSGDNodeIDCA(Node):
             self.mapping,
             self.models,
             self.optimizer_class,
-            self.optimizer_params,
+            self.original_optimizer_params.copy(),
             self.loss,
             self.log_dir,
             layers_sharing=self.layers_sharing,
@@ -440,13 +441,8 @@ class DPSGDNodeIDCA(Node):
             self.iteration = iteration
 
             # best model choice in done in trainer
-            if iteration < self.iterations / 2:
-                treshold_explo = np.exp(-iteration * 6 / self.iterations)
-            else:
-                treshold_explo = 0.0
-            # treshold_explo = np.maximum(1 - iteration * 2 / self.iterations, 0.0)
-            # treshold_explo = np.exp(-iteration * 3 / self.iterations)
-
+            self.adjust_learning_rate(iteration)
+            treshold_explo = self.compute_treshold(iteration)
             self.trainer.train(self.dataset, treshold_explo)
 
             # sharing
@@ -531,6 +527,28 @@ class DPSGDNodeIDCA(Node):
         logging.info("Storing final weight")
         final_best_model.dump_weights(self.weights_store_dir, self.uid, iteration)
         logging.info("All neighbors disconnected. Process complete!")
+
+    def adjust_learning_rate(self, iteration: int):
+        """Adjust the learning rate based on the iteration number.
+
+        Args:
+            iteration (int): current iteration
+
+        """
+        ratio = iteration / self.iterations
+        new_params = self.original_optimizer_params.copy()
+        new_params["lr"] = get_lr_step_7_9(ratio, new_params["lr"])
+        logging.debug(f"learning rate: {new_params['lr']}")
+        self.trainer.update_optimizer_params(new_params)  # only updates params of trainer, not node
+
+    def compute_treshold(self, iteration: int):
+        if iteration < self.iterations / 2:
+            treshold_explo = np.exp(-iteration * 6 / self.iterations)
+        else:
+            treshold_explo = 0.0
+        # treshold_explo = np.maximum(1 - iteration * 2 / self.iterations, 0.0)
+        # treshold_explo = np.exp(-iteration * 3 / self.iterations)
+        return treshold_explo
 
     def received_from_all(self):
         """

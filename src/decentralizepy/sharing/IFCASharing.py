@@ -93,13 +93,14 @@ class IFCASharing(Sharing):
         Args:
            data (dict): data containing the models
         """
-        self.communication_round = data["iteration"]
-        del data["iteration"]
-        del data["CHANNEL"]
-        incomming_models = self.deserialize_all_models(data)
-        for current, incomming in zip(self.models, incomming_models):
-            current.load_state_dict(incomming)
-        self._post_step()
+        with torch.no_grad():
+            self.communication_round = data["iteration"]
+            del data["iteration"]
+            del data["CHANNEL"]
+            incomming_models = self.deserialize_all_models(data)
+            for current, incomming in zip(self.models, incomming_models):
+                current.load_state_dict(incomming)
+            self._post_step()
 
     def get_data_to_send_server(self):
         """Gets the data that will be sent by the server to the nodes.
@@ -130,11 +131,7 @@ class IFCASharing(Sharing):
                 del data["iteration"]
                 del data["model_idx"]
                 del data["CHANNEL"]
-                logging.debug(
-                    "Averaging model from neighbor {} of iteration {}".format(
-                        n, iteration
-                    )
-                )
+                logging.debug("Averaging model from neighbor {} of iteration {}".format(n, iteration))
                 data = self.deserialized_model(data)
                 if model_idx in received_models:
                     received_models[model_idx].append(data)
@@ -202,9 +199,7 @@ class IFCASharing(Sharing):
             state_dict = dict()
             for i, key in enumerate(model.state_dict()):
                 end_index = start_index + self.lens[i]
-                state_dict[key] = torch.from_numpy(
-                    T[start_index:end_index].reshape(self.shapes[i])
-                )
+                state_dict[key] = torch.from_numpy(T[start_index:end_index].reshape(self.shapes[i]))
                 start_index = end_index
             state_dicts.append(state_dict)
         return state_dicts

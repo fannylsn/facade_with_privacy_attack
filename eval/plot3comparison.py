@@ -16,11 +16,8 @@ from plotIDCA import (
     compute_rates,
 )
 
-CONFIGS = [
-    "IFCA",
-    "DPSGD",
-    "IDCA",
-]
+CONFIGS = ["IFCA", "DPSGD", "IDCA", "DEPRL_V1", "DEPRL_V2", "DAC"]
+CONFIGS = ["IFCA_NO_GRAD", "IFCA", "IDCA_DEG_3", "IDCA_DEG_4", "IDCA_FC"]
 
 
 def get_stats(data):

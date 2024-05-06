@@ -11,6 +11,7 @@ from decentralizepy.graphs.Graph import Graph
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.node.DPSGDWithPeerSampler import DPSGDWithPeerSampler
 from decentralizepy.training.TrainingNIID import TrainingNIID  # noqa: F401
+from decentralizepy.utils_learning_rates import get_lr_step_7_9
 
 
 class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
@@ -100,6 +101,63 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         self.peer_deques = dict()
         self.connect_neighbors()
 
+    def cache_fields(
+        self,
+        rank,
+        machine_id,
+        mapping,
+        graph,
+        iterations,
+        log_dir,
+        weights_store_dir,
+        test_after,
+        train_evaluate_after,
+        reset_optimizer,
+    ):
+        """
+        Instantiate object field with arguments.
+
+        Parameters
+        ----------
+        rank : int
+            Rank of process local to the machine
+        machine_id : int
+            Machine ID on which the process in running
+        mapping : decentralizepy.mappings
+            The object containing the mapping rank <--> uid
+        graph : decentralizepy.graphs
+            The object containing the global graph
+        iterations : int
+            Number of iterations (communication steps) for which the model should be trained
+        log_dir : str
+            Logging directory
+        weights_store_dir : str
+            Directory in which to store model weights
+        test_after : int
+            Number of iterations after which the test loss and accuracy arecalculated
+        train_evaluate_after : int
+            Number of iterations after which the train loss is calculated
+        reset_optimizer : int
+            1 if optimizer should be reset every communication round, else 0
+        """
+        self.rank = rank
+        self.machine_id = machine_id
+        self.graph = graph
+        self.mapping = mapping
+        self.uid = self.mapping.get_uid(rank, machine_id)
+        self.n_procs = self.mapping.get_n_procs()
+        self.log_dir = log_dir
+        self.weights_store_dir = weights_store_dir
+        self.iterations = iterations
+        self.test_after = test_after
+        self.train_evaluate_after = train_evaluate_after
+        self.reset_optimizer = reset_optimizer
+        self.sent_disconnections = False
+
+        logging.debug("Rank: %d", self.rank)
+        logging.debug("type(graph): %s", str(type(self.rank)))
+        logging.debug("type(mapping): %s", str(type(self.mapping)))
+
     def init_trainer(self, train_configs):
         """
         Instantiate training module and loss from config.
@@ -151,6 +209,7 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         self.log_per_sample_loss = node_config["log_per_sample_loss"]
         self.log_per_sample_pred_true = node_config["log_per_sample_pred_true"]
         self.do_all_reduce_models = node_config["do_all_reduce_models"]
+        self.graph_degree = node_config["graph_degree"]
 
     def run(self):
         """
@@ -159,35 +218,23 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         addition of logging the cluster assigned to the node.
 
         """
-        self.testset = self.dataset.get_testset()
         # rounds_to_test = self.test_after
         # rounds_to_train_evaluate = self.train_evaluate_after
         rounds_to_test = 1
         rounds_to_train_evaluate = 1
-        global_epoch = 1
-        change = 1
 
         for iteration in range(self.iterations):
             logging.info("Starting training iteration: %d", iteration)
             rounds_to_train_evaluate -= 1
             rounds_to_test -= 1
-
             self.iteration = iteration
+
+            # training
+            self.adjust_learning_rate(iteration)
             self.trainer.train(self.dataset)
 
-            new_neighbors = self.get_neighbors()
-
-            # The following code does not work because TCP sockets are supposed to be long lived.
-            # for neighbor in self.my_neighbors:
-            #     if neighbor not in new_neighbors:
-            #         logging.info("Removing neighbor {}".format(neighbor))
-            #         if neighbor in self.peer_deques:
-            #             assert len(self.peer_deques[neighbor]) == 0
-            #             del self.peer_deques[neighbor]
-            #         self.communication.destroy_connection(neighbor, linger = 10000)
-            #         self.barrier.remove(neighbor)
-
-            self.my_neighbors = new_neighbors
+            # sharing
+            self.new_neighbors = self.get_neighbors()
             self.connect_neighbors()
             logging.debug("Connected to all neighbors")
 
@@ -214,108 +261,40 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
 
             self.sharing._averaging(averaging_deque)
 
-            if self.reset_optimizer:
-                self.optimizer = self.optimizer_class(
-                    self.model.parameters(), **self.optimizer_params
-                )  # Reset optimizer state
-                self.trainer.reset_optimizer(self.optimizer)
-
-            if iteration:
-                with open(
-                    os.path.join(self.log_dir, "{}_results.json".format(self.rank)),
-                    "r",
-                ) as inf:
-                    results_dict = json.load(inf)
-            else:
-                results_dict = {
-                    "cluster_assigned": self.dataset.cluster,
-                    "train_loss": {},
-                    "test_loss": {},
-                    "test_acc": {},
-                    "validation_loss": {},
-                    "validation_acc": {},
-                    "total_bytes": {},
-                    "total_meta": {},
-                    "total_data_per_n": {},
-                }
-                if self.log_per_sample_loss:
-                    results_dict["per_sample_loss_test"] = {}
-                    results_dict["per_sample_loss_train"] = {}
-                if self.log_per_sample_pred_true:
-                    results_dict["per_sample_pred_test"] = {}
-                    results_dict["per_sample_true_test"] = {}
-            results_dict["total_bytes"][iteration + 1] = self.communication.total_bytes
-
-            if hasattr(self.communication, "total_meta"):
-                results_dict["total_meta"][iteration + 1] = self.communication.total_meta
-            if hasattr(self.communication, "total_data"):
-                results_dict["total_data_per_n"][iteration + 1] = self.communication.total_data
+            # logging and plotting
+            results_dict = self.get_results_dict(iteration=iteration)
+            results_dict = self.log_metadata(results_dict, iteration)
 
             if rounds_to_train_evaluate == 0:
                 logging.info("Evaluating on train set.")
-                rounds_to_train_evaluate = self.train_evaluate_after * change
-                loss_after_sharing = self.trainer.eval_loss(self.dataset)
-                if self.log_per_sample_loss:
-                    # log the per sample loss for MIA
-                    self.compute_log_per_sample_loss_train(results_dict, iteration)
+                rounds_to_train_evaluate = self.train_evaluate_after
+                results_dict = self.compute_log_train_loss(results_dict, iteration)
 
-                results_dict["train_loss"][iteration + 1] = loss_after_sharing
-                self.save_plot(
-                    results_dict["train_loss"],
-                    "train_loss",
-                    "Training Loss",
-                    "Communication Rounds",
-                    os.path.join(self.log_dir, "{}_train_loss.png".format(self.rank)),
-                )
+            if rounds_to_test == 0:
+                rounds_to_test = self.test_after
 
-            if self.dataset.__testing__ and rounds_to_test == 0:
-                rounds_to_test = self.test_after * change
-                logging.info("Evaluating on test set.")
-                ta, tl = self.dataset.test(self.model, self.loss)
-                results_dict["test_acc"][iteration + 1] = ta
-                results_dict["test_loss"][iteration + 1] = tl
-                # log some metrics for MIA and fairness
-                self.compute_log_per_sample_metrics_test(results_dict, iteration)
+                if self.dataset.__testing__:
+                    logging.info("evaluating on test set.")
+                    results_dict = self.eval_on_testset(results_dict, iteration)
 
                 if self.dataset.__validating__:
-                    logging.info("Evaluating on the validation set")
-                    va, vl = self.dataset.validate(self.model, self.loss)
-                    results_dict["validation_acc"][iteration + 1] = va
-                    results_dict["validation_loss"][iteration + 1] = vl
+                    logging.info("evaluating on validation set.")
+                    results_dict = self.eval_on_validationset(results_dict, iteration)
 
-                if global_epoch == 49:
-                    change *= 2
+            self.write_results_dict(results_dict)
 
-                global_epoch += change
-
-            with open(os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w") as of:
-                json.dump(results_dict, of)
-
+        # done with all iters
         if self.do_all_reduce_models:
             self.all_reduce_model()
 
             # final test
-            with open(
-                os.path.join(self.log_dir, "{}_results.json".format(self.rank)),
-                "r",
-            ) as inf:
-                results_dict = json.load(inf)
+            results_dict = self.get_results_dict(iteration=self.iterations)
+            results_dict = self.compute_log_train_loss(results_dict, self.iterations)
+            results_dict = self.eval_on_testset(results_dict, self.iterations)
+            results_dict = self.eval_on_validationset(results_dict, self.iterations)
+            self.write_results_dict(results_dict)
 
             iteration = self.iterations
-            loss_after_sharing = self.trainer.eval_loss(self.dataset)
-            if self.log_per_sample_loss:
-                # log the per sample loss for MIA
-                self.compute_log_per_sample_loss_train(results_dict, iteration)
-            results_dict["train_loss"][iteration + 1] = loss_after_sharing
-
-            ta, tl = self.dataset.test(self.model, self.loss)
-            results_dict["test_acc"][iteration + 1] = ta
-            results_dict["test_loss"][iteration + 1] = tl
-            # log some metrics for MIA and fairness
-            self.compute_log_per_sample_metrics_test(results_dict, iteration)
-
-            with open(os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w") as of:
-                json.dump(results_dict, of)
 
         if self.model.shared_parameters_counter is not None:
             logging.info("Saving the shared parameter counts")
@@ -328,6 +307,102 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         logging.info("Storing final weight")
         self.model.dump_weights(self.weights_store_dir, self.uid, iteration)
         logging.info("All neighbors disconnected. Process complete!")
+
+    def adjust_learning_rate(self, iteration: int):
+        """Adjust the learning rate based on the iteration number.
+
+        Args:
+            iteration (int): current iteration
+
+        """
+
+        ratio = iteration / self.iterations
+        new_params = self.optimizer_params.copy()
+        new_params["lr"] = get_lr_step_7_9(ratio, new_params["lr"])
+        logging.debug(f"learning rate: {new_params['lr']}")
+        new_optimizer = self.optimizer_class(self.model.parameters(), **new_params)
+        self.trainer.reset_optimizer(new_optimizer)
+
+    def get_results_dict(self, iteration):
+        """Get the results dictionary, or create it."""
+        if iteration:
+            with open(
+                os.path.join(self.log_dir, "{}_results.json".format(self.rank)),
+                "r",
+            ) as inf:
+                results_dict = json.load(inf)
+        else:
+            results_dict = {
+                "cluster_assigned": self.dataset.cluster,
+                "train_loss": {},
+                "test_loss": {},
+                "test_acc": {},
+                "validation_loss": {},
+                "validation_acc": {},
+                "total_bytes": {},
+                "total_meta": {},
+                "total_data_per_n": {},
+            }
+            if self.log_per_sample_loss:
+                results_dict["per_sample_loss_test"] = {}
+                results_dict["per_sample_loss_train"] = {}
+            if self.log_per_sample_pred_true:
+                results_dict["per_sample_pred_test"] = {}
+                results_dict["per_sample_true_test"] = {}
+        return results_dict
+
+    def log_metadata(self, results_dict, iteration):
+        """Log the metadata of the communication.
+
+        Args:
+            results_dict (Dict): dict containg the results
+            iteration (int): current iteration
+        Returns:
+            Dict: dict containing the results
+        """
+        results_dict["total_bytes"][iteration + 1] = self.communication.total_bytes
+
+        if hasattr(self.communication, "total_meta"):
+            results_dict["total_meta"][str(iteration + 1)] = self.communication.total_meta
+        if hasattr(self.communication, "total_data"):
+            results_dict["total_data_per_n"][str(iteration + 1)] = self.communication.total_data
+        return results_dict
+
+    def write_results_dict(self, results_dict):
+        """Dumps the results dictionary to a file.
+
+        Args:
+            results_dict (_type_): _description_
+        """
+        with open(os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w") as of:
+            json.dump(results_dict, of)
+
+    def compute_log_train_loss(self, results_dict, iteration):
+        """Redefinition. Compute the train loss on the best model and save the plot.
+
+        This is done after the averaging of models across neighboors.
+
+        Args:
+            results_dict (dict): Dictionary containing the results
+            iteration (int): current iteration
+        """
+        if self.log_per_sample_loss:
+            # log the per sample loss for MIA
+            self.compute_log_per_sample_loss_train(results_dict, iteration)
+
+        training_loss = self.trainer.eval_loss(self.dataset)
+
+        results_dict["train_loss"][str(iteration + 1)] = training_loss
+
+        self.save_plot(
+            results_dict["train_loss"],
+            "train_loss",
+            "Training Loss",
+            "Communication Rounds",
+            os.path.join(self.log_dir, "{}_train_loss.png".format(self.rank)),
+        )
+
+        return results_dict
 
     def compute_log_per_sample_loss_train(self, results_dict: Dict, iteration: int):
         """Compute the per sample loss for the current model.
@@ -343,8 +418,68 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         results_dict["per_sample_loss_train"][str(iteration + 1)] = json.dumps(per_sample_loss_tr)
         return results_dict
 
+    def eval_on_testset(self, results_dict: Dict, iteration):
+        """Redefinition. Evaluate the model on the test set.
+        Args:
+            results_dict (dict): Dictionary containing the results
+            iteration (int): current iteration
+        Returns:
+            dict: Dictionary containing the results
+        """
+        ta, tl = self.dataset.test(self.model, self.loss)
+        results_dict["test_acc"][str(iteration + 1)] = ta
+        results_dict["test_loss"][str(iteration + 1)] = tl
+
+        # log some metrics for MIA and fairness
+        self.compute_log_per_sample_metrics_test(results_dict, iteration)
+
+        return results_dict
+
     def compute_log_per_sample_metrics_test(self, results_dict: Dict, iteration: int):
         """Compute the per sample metrics for the given model, if the flags are set.
+        Args:
+            results_dict (dict): Dictionary containing the results
+            iteration (int): current iteration
+            best_idx (int): Index of the best model (previously computed)
+        Returns:
+            dict: Dictionary containing the results
+        """
+        loss_func = self.loss_class(reduction="none")
+
+        if self.do_all_reduce_models:
+            log_pred_this_iter = self.log_per_sample_pred_true and iteration == self.iterations
+        else:
+            log_pred_this_iter = self.log_per_sample_pred_true and iteration >= self.iterations - self.test_after
+
+        per_sample_loss, per_sample_pred, per_sample_true = self.dataset.compute_per_sample_loss(
+            self.model, loss_func, False, self.log_per_sample_loss, log_pred_this_iter
+        )
+        if self.log_per_sample_loss:
+            results_dict["per_sample_loss_test"][str(iteration + 1)] = json.dumps(per_sample_loss)
+        if log_pred_this_iter:
+            results_dict["per_sample_pred_test"][str(iteration + 1)] = json.dumps(per_sample_pred)
+            results_dict["per_sample_true_test"][str(iteration + 1)] = json.dumps(per_sample_true)
+        return results_dict
+
+    def eval_on_validationset(self, results_dict: Dict, iteration):
+        """Redefinition. Evaluate the model on the validation set.
+        Args:
+            results_dict (dict): Dictionary containing the results
+            iteration (int): current iteration
+        Returns:
+            dict: Dictionary containing the results
+        """
+        # log the per sample loss for MIA, or don't
+        # self.compute_log_per_sample_loss_val(results_dict, iteration)
+
+        va, vl = self.dataset.validate(self.model, self.loss)
+        results_dict["validation_acc"][str(iteration + 1)] = va
+        results_dict["validation_loss"][str(iteration + 1)] = vl
+        return results_dict
+
+    def compute_log_per_sample_loss_val(self, results_dict: Dict, iteration: int, best_idx: int):
+        """Not used currently. Compute the per sample loss for the current model.
+
         Args:
             results_dict (dict): Dictionary containing the results
             iteration (int): current iteration
@@ -352,15 +487,9 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
             dict: Dictionary containing the results
         """
         loss_func = self.loss_class(reduction="none")
-
-        per_sample_loss, per_sample_pred, per_sample_true = self.dataset.compute_per_sample_loss(
-            self.model, loss_func, False, self.log_per_sample_loss, self.log_per_sample_pred_true
-        )
-        if self.log_per_sample_loss:
-            results_dict["per_sample_loss_test"][str(iteration + 1)] = json.dumps(per_sample_loss)
-        if self.log_per_sample_pred_true:
-            results_dict["per_sample_pred_test"][str(iteration + 1)] = json.dumps(per_sample_pred)
-            results_dict["per_sample_true_test"][str(iteration + 1)] = json.dumps(per_sample_true)
+        model = self.models[best_idx]
+        per_sample_loss_val = self.dataset.compute_per_sample_loss(model, loss_func, validation=True)
+        results_dict["per_sample_loss_val"][str(iteration + 1)] = json.dumps(per_sample_loss_val)
         return results_dict
 
     def all_reduce_model(self):

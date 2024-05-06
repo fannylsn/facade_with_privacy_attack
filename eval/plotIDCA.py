@@ -650,6 +650,8 @@ def compute_rates(results: List[Dict[str, Any]]):
     for res in results:
         cluster = res["cluster_assigned"]
         # in recent data, we only record the last iteration to save time
+        if not res["per_sample_pred_test"]:
+            return None, None  # exp was manually stop, not have the correct data
         last_iter = str(max([int(x) for x in res["per_sample_pred_test"].keys()]))
         for (iter, pred), (_, true) in zip(res["per_sample_pred_test"].items(), res["per_sample_true_test"].items()):
             # for now only care about the last iteration

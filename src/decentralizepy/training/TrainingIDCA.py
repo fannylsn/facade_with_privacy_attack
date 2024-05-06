@@ -81,6 +81,15 @@ class TrainingIDCA(Training):
 
         self.current_model_is_best = False
 
+    def update_optimizer_params(self, new_params):
+        """
+        Update the optimizer parameters
+
+        Args:
+            new_params (dict): New optimizer parameters
+        """
+        self.optimizer_params.update(new_params)
+
     def train(self, dataset: Dataset, treshold: float = 0.0):
         """
         One training iteration
@@ -106,7 +115,7 @@ class TrainingIDCA(Training):
 
         model_leaking = False
         if model_leaking:
-            a = 2.0
+            a = 5.0
             self.leak_model(a)
 
         # reset the optimizer to match the current model parameters
@@ -144,21 +153,24 @@ class TrainingIDCA(Training):
 
     def leak_model(self, a=1.0):
         softmax = torch.nn.Softmax(dim=0)
-        # scaled softmax
-        weights = softmax(-torch.tensor(self.models_losses) * a)
-        old_models = [copy.deepcopy(model) for model in self.models]
+        with torch.no_grad():
+            # a-scaled softmax
+            max_weight = torch.max(softmax(-torch.tensor(self.models_losses) * a)).item()
+            old_models = [copy.deepcopy(model) for model in self.models]
 
-        for model in self.models:
-            new_state_dict = {}
-            for i, old_model in enumerate(old_models):
-                old_state_dict = old_model.state_dict()
-                for key in old_state_dict:
-                    if key in new_state_dict:
-                        new_state_dict[key] += weights[i] * old_state_dict[key].detach().clone()
-                    else:
-                        new_state_dict[key] = weights[i] * old_state_dict[key].detach().clone()
+            for j, model in enumerate(self.models):
+                new_state_dict = {}
+                weights = [(1 - max_weight) / (len(self.models) - 1)] * len(self.models)
+                weights[j] = max_weight
+                for i, old_model in enumerate(old_models):
+                    old_state_dict = old_model.state_dict()
+                    for key in old_state_dict:
+                        if key in new_state_dict:
+                            new_state_dict[key] += weights[i] * old_state_dict[key].detach().clone()
+                        else:
+                            new_state_dict[key] = weights[i] * old_state_dict[key].detach().clone()
 
-            model.load_state_dict(new_state_dict)
+                model.load_state_dict(new_state_dict)
 
     def train_full(self, dataset: Dataset):
         """
@@ -172,8 +184,8 @@ class TrainingIDCA(Training):
             epoch_loss = 0.0
             count = 0
             for data, target in trainset:
-                logging.debug("Starting minibatch {} with num_samples: {}".format(count, len(data)))
-                logging.debug("Classes: {}".format(target))
+                # logging.debug("Starting minibatch {} with num_samples: {}".format(count, len(data)))
+                # logging.debug("Classes: {}".format(target))
                 epoch_loss += self._trainstep(data, target)
                 count += 1
             logging.debug("Epoch: {} mean loss: {}".format(epoch, epoch_loss / count))
@@ -184,17 +196,16 @@ class TrainingIDCA(Training):
         Args:
             dataset (decentralizepy.datasets.Dataset): the dataset holding the data
         """
-        trainset = dataset.get_trainset(self.batch_size, self.shuffle)
-        for epoch in range(self.rounds):
-            count = 0
-            iter_loss = 0.0
+        iter_loss = 0.0
+        count = 0
+        while count < self.rounds:
+            # if we have not finished the rounds, we need to continue training with new ransom order
+            trainset = dataset.get_trainset(self.batch_size, self.shuffle)
             for data, target in trainset:
                 iter_loss += self._trainstep(data, target)
                 count += 1
-                logging.debug("Minibatch: {}, total mean loss: {}".format(count, iter_loss / count))
+                logging.debug("Round: {} loss: {}".format(count, iter_loss / count))
                 if count >= self.rounds:
-                    logging.debug(f"Finished epoch {epoch} after {count} minibatchs")
-                    count = 0
                     break
 
     def eval_loss(self, model: Model, dataset: Dataset):

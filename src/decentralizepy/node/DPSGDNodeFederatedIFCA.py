@@ -18,6 +18,7 @@ from decentralizepy.models.Model import Model  # noqa: F401
 from decentralizepy.node.Node import Node
 from decentralizepy.sharing.IFCASharing import IFCASharing  # noqa: F401
 from decentralizepy.training.TrainingIDCA import TrainingIDCA  # noqa: F401
+from decentralizepy.utils_learning_rates import get_lr_step_7_9
 
 
 class DPSGDNodeFederatedIFCA(Node):
@@ -306,7 +307,7 @@ class DPSGDNodeFederatedIFCA(Node):
         """
         optimizer_module = importlib.import_module(optimizer_configs["optimizer_package"])
         self.optimizer_class = getattr(optimizer_module, optimizer_configs["optimizer_class"])
-        self.optimizer_params = utils.remove_keys(optimizer_configs, ["optimizer_package", "optimizer_class"])
+        self.original_optimizer_params = utils.remove_keys(optimizer_configs, ["optimizer_package", "optimizer_class"])
 
     def init_trainer(self, train_configs):
         """
@@ -344,7 +345,7 @@ class DPSGDNodeFederatedIFCA(Node):
             self.mapping,
             self.models,
             self.optimizer_class,
-            self.optimizer_params,
+            self.original_optimizer_params.copy(),
             self.loss,
             self.log_dir,
             **train_params,
@@ -444,8 +445,17 @@ class DPSGDNodeFederatedIFCA(Node):
             # training
             logging.info("Starting training iteration")
             # No exploration by design in raw IFCA -> treshold = 0
+            self.adjust_learning_rate(iteration)
             self.trainer.train(self.dataset, 0)
 
+            #######
+            # with torch.no_grad():
+            #     model = self.models[self.trainer.current_model_idx]
+            #     new_state_dict = model.state_dict().copy()  # Create a copy of the state dict
+            #     for k, v in new_state_dict.items():
+            #         new_state_dict[k] = torch.ones_like(v) * self.rank
+            #     model.load_state_dict(new_state_dict)  # Update the model's parameters
+            #######
             # Send update to server
             to_send = self.sharing.get_data_to_send_node(self.trainer.current_model_idx)
             to_send["CHANNEL"] = "DPSGD"
@@ -455,6 +465,19 @@ class DPSGDNodeFederatedIFCA(Node):
             self.participated += 1
 
         logging.info("Server disconnected. Process complete!")
+
+    def adjust_learning_rate(self, iteration: int):
+        """Adjust the learning rate based on the iteration number.
+
+        Args:
+            iteration (int): current iteration
+
+        """
+        ratio = iteration / self.iterations
+        new_params = self.original_optimizer_params.copy()
+        new_params["lr"] = get_lr_step_7_9(ratio, new_params["lr"])
+        logging.debug(f"learning rate: {new_params['lr']}")
+        self.trainer.update_optimizer_params(new_params)  # only updates params of trainer, not node
 
     def get_results_dict(self):
         """Get the results dictionary, or create it."""

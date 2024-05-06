@@ -1,18 +1,14 @@
 import logging
-from random import Random
-from typing import List, Union
 
 import torch
 import torchvision
-from torch.utils.data import DataLoader
 
-from decentralizepy.datasets.Dataset import Dataset
+from decentralizepy.datasets.DatasetClustered import DatasetClustered
 from decentralizepy.datasets.Partitioner import DataPartitioner
 from decentralizepy.mappings.Mapping import Mapping
-from decentralizepy.models.Model import Model
 
 
-class RotatedDataset(Dataset):
+class RotatedDataset(DatasetClustered):
     """
     Class for Rotated dataset (used to simulate non IID data).
     """
@@ -81,22 +77,15 @@ class RotatedDataset(Dataset):
 
         self.number_of_clusters = number_of_clusters
         self.assign_cluster()
-        self.dataset_id = sum(
-            [idx == self.cluster for idx in self.clusters_idx[: self.rank]]
-        )  # id of the dataset in the cluster of the node
 
-    def assign_cluster(self):
-        """Generate the cluster assignment for the current process."""
-        rng = Random()
-        rng.seed(self.random_seed)
-        if self.sizes is None:
-            self.clusters_idx = [i % self.number_of_clusters for i in range(self.num_partitions)]
+        # to have the full dataset for each cluster (IFCA were doing it this way with rotations)
+        self.duplicate_datasets = False
+        if self.duplicate_datasets:
+            self.dataset_id = sum(
+                [idx == self.cluster for idx in self.clusters_idx[: self.rank]]
+            )  # id of the dataset in the cluster of the node
         else:
-            self.clusters_idx = []
-            for idx, size in enumerate(self.sizes):
-                self.clusters_idx += [idx] * len(size)
-        rng.shuffle(self.clusters_idx)
-        self.cluster = self.clusters_idx[self.rank]
+            self.dataset_id = self.rank
 
     def get_rotation_transform(self) -> torchvision.transforms.RandomRotation:
         """
@@ -141,18 +130,34 @@ class RotatedDataset(Dataset):
             self.sizes = []
             for i in range(self.number_of_clusters):
                 node_in_cluster_i = sum([idx == i for idx in self.clusters_idx])
-                e = c_len // node_in_cluster_i
-                frac = e / c_len
-                self.sizes.append([frac] * node_in_cluster_i)
-                self.sizes[i][-1] += 1.0 - frac * node_in_cluster_i
+                if self.duplicate_datasets:
+                    e = c_len // node_in_cluster_i
+                    frac = e / c_len
+                    self.sizes.append([frac] * node_in_cluster_i)
+                    self.sizes[i][-1] += 1.0 - frac * node_in_cluster_i
+                else:
+                    e = c_len // self.num_nodes
+                    frac = e / c_len
+                    self.sizes.append([frac] * node_in_cluster_i)
+                    self.sizes[i][-1] += (1.0 / self.number_of_clusters) - frac * node_in_cluster_i
             logging.debug("Size fractions: {}".format(self.sizes))
 
-        self.data_partitioner = DataPartitioner(
-            trainset,
-            sizes=self.sizes[self.cluster],
-            seed=self.random_seed,
-        )
+        if self.duplicate_datasets:
+            self.data_partitioner = DataPartitioner(
+                trainset,
+                sizes=self.sizes[self.cluster],
+                seed=self.random_seed,
+            )
+        else:
+            # current way
+            self.data_partitioner = DataPartitioner(
+                trainset,
+                sizes=[x for sublist in self.sizes for x in sublist],
+                seed=self.random_seed,
+            )
+
         self.trainset = self.data_partitioner.use(self.dataset_id)
+        logging.info(f"The training set has {len(self.trainset)} samples.")
 
     def load_testset(self):
         """
@@ -171,261 +176,3 @@ class RotatedDataset(Dataset):
                 [self.validation_size, 1 - self.validation_size],
                 torch.Generator().manual_seed(self.random_seed),
             )
-
-    def get_dataset_object(self, train: bool = True) -> torch.utils.data.Dataset:
-        """Get the dataset object from torchvision or the filesystem."""
-        raise NotImplementedError
-
-    def get_trainset(self, batch_size=1, shuffle=False) -> DataLoader:
-        """
-        Function to get the training set
-
-        Parameters
-        ----------
-        batch_size : int, optional
-            Batch size for learning
-
-        Returns
-        -------
-        torch.utils.data.Dataloader
-
-        Raises
-        ------
-        RuntimeError
-            If the training set was not initialized
-
-        """
-        if self.__training__:
-            return DataLoader(self.trainset, batch_size=batch_size, shuffle=shuffle)
-        raise RuntimeError("Training set not initialized!")
-
-    def get_testset(self) -> DataLoader:
-        """
-        Function to get the test set
-
-        Returns
-        -------
-        torch.utils.data.Dataloader
-
-        Raises
-        ------
-        RuntimeError
-            If the test set was not initialized
-
-        """
-        if self.__testing__:
-            return DataLoader(self.testset, batch_size=self.test_batch_size)
-        raise RuntimeError("Test set not initialized!")
-
-    def get_validationset(self) -> DataLoader:
-        """
-        Function to get the validation set
-
-        Returns
-        -------
-        torch.utils.data.Dataloader
-
-        Raises
-        ------
-        RuntimeError
-            If the test set was not initialized
-
-        """
-        if self.__validating__:
-            return DataLoader(self.validationset, batch_size=self.test_batch_size)
-        raise RuntimeError("Validation set not initialized!")
-
-    def test(self, models: Union[List[Model], Model], loss_func):
-        """
-        Function to evaluate model on the test dataset.
-
-        Parameters
-        ----------
-        models : List[decentralizepy.models.Model]
-            Models to be chosen from and evaluate on the best one
-        loss_func : torch.nn.loss
-            Loss function to use
-
-        Returns
-        -------
-        tuple(float, float, int)
-
-        """
-        logging.debug("Evaluate model on the test set")
-        loss_vals = []
-        correct_preds_per_cls = []
-        totals_pred_per_cls = []
-        totals_correct = []
-        totals_predicted = []
-
-        only_one_model = False
-        if not isinstance(models, list):
-            only_one_model = True
-            models = [models]
-
-        for i, model in enumerate(models):
-            model.eval()
-            logging.debug("Model {} in evaluation mode.".format(i))
-
-            correct_pred_per_cls = [0 for _ in range(self.num_classes)]
-            total_pred_per_cls = [0 for _ in range(self.num_classes)]
-
-            total_correct = 0
-            total_predicted = 0
-
-            with torch.no_grad():
-                loss_val = 0.0
-                count = 0
-                for elems, labels in self.get_testset():
-                    outputs = model(elems)
-                    loss_val += loss_func(outputs, labels).item()
-                    count += 1
-                    _, predictions = torch.max(outputs, 1)
-                    for label, prediction in zip(labels, predictions):
-                        logging.debug("{} predicted as {}".format(label, prediction))
-                        if label == prediction:
-                            correct_pred_per_cls[label] += 1
-                            total_correct += 1
-                        total_pred_per_cls[label] += 1
-                        total_predicted += 1
-
-            loss_vals.append(loss_val)
-            correct_preds_per_cls.append(correct_pred_per_cls)
-            totals_pred_per_cls.append(total_pred_per_cls)
-            totals_correct.append(total_correct)
-            totals_predicted.append(total_predicted)
-
-        best_model_idx = loss_vals.index(min(loss_vals))
-
-        logging.debug(f"Predicted on the test set. Best model is {best_model_idx}")
-
-        for key, value in enumerate(correct_preds_per_cls[best_model_idx]):
-            if totals_pred_per_cls[best_model_idx][key] != 0:
-                accuracy = 100 * float(value) / totals_pred_per_cls[best_model_idx][key]
-            else:
-                accuracy = 100.0
-            logging.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
-
-        accuracy = 100 * float(totals_correct[best_model_idx]) / totals_predicted[best_model_idx]
-        final_loss_val = loss_vals[best_model_idx] / count
-        logging.info("Overall test accuracy is: {:.1f} %".format(accuracy))
-
-        if only_one_model:
-            # compatibility with the previous version
-            return accuracy, final_loss_val
-
-        return accuracy, final_loss_val, best_model_idx
-
-    def validate(self, models: Union[List[Model], Model], loss_func):
-        """
-        Function to evaluate model on the validation dataset.
-
-        Parameters
-        ----------
-        models : List[decentralizepy.models.Model]
-            Models to be chosen from and evaluate on the best one
-        loss : torch.nn.loss
-            Loss function to use
-
-        Returns
-        -------
-        tuple(float, float, int)
-
-        """
-        logging.debug("Evaluate model on the test set")
-        loss_vals = []
-        correct_preds_per_cls = []
-        totals_pred_per_cls = []
-        totals_correct = []
-        totals_predicted = []
-
-        only_one_model = False
-        if not isinstance(models, list):
-            only_one_model = True
-            models = [models]
-
-        for i, model in enumerate(models):
-            model.eval()
-            logging.debug("Model {} in evaluation mode.".format(i))
-
-            correct_pred_per_cls = [0 for _ in range(self.num_classes)]
-            total_pred_per_cls = [0 for _ in range(self.num_classes)]
-
-            total_correct = 0
-            total_predicted = 0
-
-            with torch.no_grad():
-                loss_val = 0.0
-                count = 0
-                for elems, labels in self.get_validationset():
-                    outputs = model(elems)
-                    loss_val += loss_func(outputs, labels).item()
-                    count += 1
-                    _, predictions = torch.max(outputs, 1)
-                    for label, prediction in zip(labels, predictions):
-                        logging.debug("{} predicted as {}".format(label, prediction))
-                        if label == prediction:
-                            correct_pred_per_cls[label] += 1
-                            total_correct += 1
-                        total_pred_per_cls[label] += 1
-                        total_predicted += 1
-
-            loss_vals.append(loss_val)
-            correct_preds_per_cls.append(correct_pred_per_cls)
-            totals_pred_per_cls.append(total_pred_per_cls)
-            totals_correct.append(total_correct)
-            totals_predicted.append(total_predicted)
-
-        best_model_idx = loss_vals.index(min(loss_vals))
-
-        logging.debug(f"Predicted on the val set. Best model is {best_model_idx}")
-
-        for key, value in enumerate(correct_preds_per_cls[best_model_idx]):
-            if totals_pred_per_cls[best_model_idx][key] != 0:
-                accuracy = 100 * float(value) / totals_pred_per_cls[best_model_idx][key]
-            else:
-                accuracy = 100.0
-            logging.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
-
-        accuracy = 100 * float(totals_correct[best_model_idx]) / totals_predicted[best_model_idx]
-        final_loss_val = loss_vals[best_model_idx] / count
-        logging.info("Overall test accuracy is: {:.1f} %".format(accuracy))
-
-        if only_one_model:
-            # compatibility with the previous version
-            return accuracy, final_loss_val
-
-        return accuracy, final_loss_val, best_model_idx
-
-    def compute_per_sample_loss(
-        self, model: Model, loss_func, validation: bool = False, log_loss: bool = False, log_pred_true: bool = False
-    ):
-        """
-        Compute the per sample loss for the current model (the one that will be shared).
-
-        Args:
-            model (decentralizepy.models.Model): The model to evaluate.
-            loss_func (torch.nn.loss): The loss function to use
-            validation (bool): True if the validation set should be used, False otherwise
-        """
-        model.eval()
-        if validation:
-            dataset = self.get_validationset()
-        else:
-            dataset = self.get_testset()
-
-        with torch.no_grad():
-            per_sample_loss = []
-            per_sample_pred = []
-            per_sample_true = []
-            for elems, labels in dataset:
-                outputs = model(elems)
-                loss_val = loss_func(outputs, labels)
-                _, predictions = torch.max(outputs, 1)
-                if log_loss:
-                    per_sample_loss.extend(loss_val.tolist())
-                if log_pred_true:
-                    per_sample_pred.extend(predictions.tolist())
-                    per_sample_true.extend(labels.tolist())
-
-        return per_sample_loss, per_sample_pred, per_sample_true
