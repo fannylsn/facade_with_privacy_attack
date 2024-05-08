@@ -18,6 +18,9 @@ from plotIDCA import (
 
 CONFIGS = ["IFCA", "DPSGD", "IDCA", "DEPRL_V1", "DEPRL_V2", "DAC"]
 CONFIGS = ["IFCA_NO_GRAD", "IFCA", "IDCA_DEG_3", "IDCA_DEG_4", "IDCA_FC"]
+CONFIGS = ["B_8_r_5", "B_8_r_7", "B_8_r_10", "B_16_r_5", "B_16_r_7", "B_16_r_10", "B_32_r_5", "B_32_r_7", "B_32_r_10"]
+CONFIGS = ["no_lr", "lr"]
+CONFIGS = ["lr_0.1", "lr_0.05", "lr_0.01"]
 
 
 def get_stats(data):

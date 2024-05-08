@@ -99,7 +99,7 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
 
         self.init_sharing(config["SHARING"])
         self.peer_deques = dict()
-        self.connect_neighbors()
+        # self.connect_neighbors() # done latter
 
     def cache_fields(
         self,
@@ -234,7 +234,7 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
             self.trainer.train(self.dataset)
 
             # sharing
-            self.new_neighbors = self.get_neighbors()
+            self.my_neighbors = self.get_neighbors()
             self.connect_neighbors()
             logging.debug("Connected to all neighbors")
 

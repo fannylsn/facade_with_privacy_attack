@@ -77,13 +77,24 @@ class DatasetClustered(Dataset):
             validation_size,
         )
         self.num_nodes = self.num_partitions  # more explicit
+        logging.debug("Number of nodes: {}".format(self.num_nodes))
+        logging.debug("Rank: {}".format(rank))
+        logging.debug("Uid: {}".format(self.uid))
         self.num_classes = None  # to be set by the child class
 
         self.number_of_clusters = number_of_clusters
         self.assign_cluster()
-        self.dataset_id = sum(
-            [idx == self.cluster for idx in self.clusters_idx[: self.rank]]
-        )  # id of the dataset in the cluster of the node
+        logging.debug("Clusters idx: {}".format(self.clusters_idx))
+        logging.debug("Cluster: {}".format(self.cluster))
+
+        # to have the full dataset for each cluster (IFCA were doing it this way with rotations)
+        self.duplicate_datasets = False
+        if self.duplicate_datasets:
+            self.dataset_id = sum(
+                [idx == self.cluster for idx in self.clusters_idx[: self.uid]]
+            )  # id of the dataset in the cluster of the node
+        else:
+            self.dataset_id = self.uid
 
     def assign_cluster(self):
         """Generate the cluster assignment for the current process."""
@@ -96,7 +107,7 @@ class DatasetClustered(Dataset):
             for idx, size in enumerate(self.sizes):
                 self.clusters_idx += [idx] * len(size)
         rng.shuffle(self.clusters_idx)
-        self.cluster = self.clusters_idx[self.rank]
+        self.cluster = self.clusters_idx[self.uid]
 
     def load_trainset(self):
         """
