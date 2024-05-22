@@ -89,6 +89,11 @@ class DPSGDNodeFederatedIFCA(Node):
 
         """
 
+        # for early restarts
+        self.return_dict = None
+        if len(args) > 0:
+            self.return_dict = args[0]
+
         total_threads = os.cpu_count()
         self.threads_per_proc = max(math.floor(total_threads / mapping.get_local_procs_count()), 1)
         torch.set_num_threads(self.threads_per_proc)
@@ -406,6 +411,13 @@ class DPSGDNodeFederatedIFCA(Node):
                 self.barrier.remove(sender)
                 break
 
+            # for early restarts
+            if "RESTART" in data:
+                logging.debug("Received {} from {}".format("RESTART", sender))
+                self.barrier.remove(sender)
+                self.return_dict["early_stop"] = True
+                break
+
             iteration = data["iteration"]
             self.sharing.recieve_data_node(data)
             # after recieving, the current is not the best anymore
@@ -445,7 +457,7 @@ class DPSGDNodeFederatedIFCA(Node):
             # training
             logging.info("Starting training iteration")
             # No exploration by design in raw IFCA -> treshold = 0
-            self.adjust_learning_rate(iteration)
+            # self.adjust_learning_rate(iteration)
             self.trainer.train(self.dataset, 0)
 
             #######

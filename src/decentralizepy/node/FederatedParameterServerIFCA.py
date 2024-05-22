@@ -440,7 +440,7 @@ class FederatedParameterServerIFCA(Node):
                                     break
                             if static:
                                 self.return_dict["early_stop"] = True
-                                self.disconnect_neighbors()
+                                self.disconect_early_restart()
                                 return
                     self.prev_models = [copy.deepcopy(model) for model in self.models]
 
@@ -489,3 +489,13 @@ class FederatedParameterServerIFCA(Node):
         """
         with open(os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w") as of:
             json.dump(results_dict, of)
+
+    def disconect_early_restart(self):
+        """Early restart the process."""
+        logging.info("Early restart: Disconnecting neighbors")
+        if not self.sent_disconnections:
+            for neighbor in self.my_neighbors:
+                self.communication.send(neighbor, {"RESTART": self.uid, "CHANNEL": "WORKER_REQUEST"})
+                self.barrier.remove(neighbor)
+
+            self.sent_disconnections = True

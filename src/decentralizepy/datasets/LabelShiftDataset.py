@@ -151,15 +151,20 @@ class LabelShiftDataset(DatasetClustered):
 
         # get the dirichlet partition for the cluster, then repartition this data
         cluster_data = self.data_partitioner.use(self.cluster)
+        logging.debug(f"cluster {self.cluster} has {len(cluster_data)} samples")
         self.cluster_distribution = self.compute_cluster_ditribution(cluster_data)
-
+        logging.debug(f"adapting sizes for cluster {self.cluster} with sizes {self.sizes[self.cluster]}")
+        # adapted_sizes = [self.cluster * frac for frac in self.sizes[self.cluster]]
+        # logging.debug(f"adapted sizes: {adapted_sizes}")
         self.data_sub_partitioner = DataPartitioner(
             cluster_data,
             sizes=self.sizes[self.cluster],
             seed=self.random_seed,
         )
         self.trainset = self.data_sub_partitioner.use(self.dataset_id)
-        logging.info(f"Rank {self.rank} of cluser {self.cluster} has {len(self.trainset)} samples in trainset.")
+        logging.info(
+            f"Dataset ID {self.dataset_id} of cluser {self.cluster} has {len(self.trainset)} samples in trainset."
+        )
 
         # from torch.utils.data import DataLoader
         # d = DataLoader(self.trainset, batch_size=100, shuffle=True)

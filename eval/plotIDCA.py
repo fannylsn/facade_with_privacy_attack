@@ -125,10 +125,10 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
                 results.append(json.load(inf))
     print("Files", files)
 
-    data_node = 0
-    with open(folder_path / data_machine / f"{data_node}_results.json", "r") as f:
-        main_data = json.load(f)
-    main_data = [main_data]
+    # data_node = 0
+    # with open(folder_path / data_machine / f"{data_node}_results.json", "r") as f:
+    #     main_data = json.load(f)
+    # main_data = [main_data]
 
     # Plotting bytes over time
     plt.figure(10)
@@ -234,10 +234,6 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         columns=["mean", "std", "nr_nodes", "total_bytes"],
     )
 
-    plt.figure(33)
-    final_data = get_per_cluster_stats(results, metric="test_acc")
-    per_cluster_plot(final_data, "Testing accuracy per cluster", "upper right")
-
     plt.figure(13)
     means = replace_dict_key(means, b_means)
     plot(
@@ -251,6 +247,23 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         "Total Bytes per node",
     )
     df.to_csv(os.path.join(folder_path, "test_acc.csv"), index_label="rounds")
+
+    plt.figure(33)
+    final_data = get_per_cluster_stats(results, metric="test_acc")
+    per_cluster_plot(final_data, "Testing accuracy per cluster", "upper right")
+    df = pd.DataFrame(
+        {
+            "mean_0": list(final_data[0][0].values()),
+            "std_0": list(final_data[0][1].values()),
+            "mean_1": list(final_data[1][0].values()),
+            "std_1": list(final_data[1][1].values()),
+            "nr_nodes": [len(results)] * len(means),
+            "total_bytes": correct_bytes,
+        },
+        list(means.keys()),
+        columns=["mean_0", "std_0", "mean_1", "std_1", "nr_nodes", "total_bytes"],
+    )
+    df.to_csv(os.path.join(folder_path, "test_acc_clut.csv"), index_label="rounds")
 
     # Collect total_bytes shared
     bytes_list = []
@@ -656,6 +669,7 @@ def compute_rates(results: List[Dict[str, Any]]):
         for (iter, pred), (_, true) in zip(res["per_sample_pred_test"].items(), res["per_sample_true_test"].items()):
             # for now only care about the last iteration
             if iter == last_iter:
+                # print("lenght:", len(pred), len(true))
                 tp, tn, fp, fn = per_class_perf_measure(true, pred)
                 per_cluster_rates[cluster]["TP"].append(tp)
                 per_cluster_rates[cluster]["TN"].append(tn)
@@ -667,7 +681,7 @@ def compute_rates(results: List[Dict[str, Any]]):
 
 
 def per_class_perf_measure(y_true, y_pred):
-    cnf_matrix = confusion_matrix(y_true, y_pred)
+    cnf_matrix = confusion_matrix(y_true, y_pred, labels=list(CIFAR_CLASSES.keys()))
     FP = np.array((cnf_matrix.sum(axis=0) - np.diag(cnf_matrix)), dtype=np.float32)
     FN = np.array((cnf_matrix.sum(axis=1) - np.diag(cnf_matrix)), dtype=np.float32)
     TP = np.array((np.diag(cnf_matrix)).astype(float), dtype=np.float32)
@@ -707,20 +721,23 @@ def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]]
     tot_1 = np.sum([per_class_rates[clusters[1]][k] for k in per_class_rates[clusters[1]].keys()], axis=0)
 
     demo_parity = abs(pos_preds_0 / tot_0 - pos_preds_1 / tot_1)
-
+    all = np.mean(demo_parity)
+    labels = [CIFAR_CLASSES[i] for i in range(len(demo_parity))]
+    labels.append("Mean")
+    with_mean = np.append(demo_parity, all)
     df = pd.DataFrame(
         {
-            "class_labels": [CIFAR_CLASSES[i] for i in range(len(demo_parity))],
-            "demographic_parity": demo_parity,
+            "class_labels": labels,
+            "demographic_parity": with_mean,
         }
     )
     df.to_csv(os.path.join(folder_path, "demographic_parity.csv"))
 
-    plt.plot(demo_parity, "o")
+    plt.plot(with_mean, "o")
     plt.title("Per class demographic parity")
     plt.ylabel("Absolute difference in accuracy")
     plt.xlabel("Classes")
-    plt.xticks(range(len(demo_parity)), [CIFAR_CLASSES[i] for i in range(len(demo_parity))], rotation=45)
+    plt.xticks(range(len(with_mean)), labels, rotation=45)
     plt.savefig(os.path.join(folder_path, "demographic_parity.png"), dpi=300)
 
 
@@ -741,11 +758,14 @@ def plot_per_class_equal_opportunities(per_class_rates: Dict[int, Dict[str, int]
     )
 
     eq_op = abs(rec_0 - rec_1)
-
+    all = np.mean(eq_op)
+    labels = [CIFAR_CLASSES[i] for i in range(len(eq_op))]
+    labels.append("Mean")
+    eq_op = np.append(eq_op, all)
     df = pd.DataFrame(
         {
-            "class_labels": [CIFAR_CLASSES[i] for i in range(len(eq_op))],
-            "equal_opportunities": eq_op,
+            "class_labels": labels,
+            "demographic_parity": eq_op,
         }
     )
     df.to_csv(os.path.join(folder_path, "equal_opportunities.csv"))
@@ -754,7 +774,7 @@ def plot_per_class_equal_opportunities(per_class_rates: Dict[int, Dict[str, int]
     plt.title("Per class equal opportunities")
     plt.ylabel("Absolute difference in recall")
     plt.xlabel("Classes")
-    plt.xticks(range(len(eq_op)), [CIFAR_CLASSES[i] for i in range(len(eq_op))], rotation=45)
+    plt.xticks(range(len(eq_op)), labels, rotation=45)
     plt.savefig(os.path.join(folder_path, "equal_opportunities.png"), dpi=300)
 
 

@@ -167,6 +167,7 @@ class GraphOrchestratorDAC(PeerSamplerDynamic):
 
                     self.communication.send(neighbor, resp)
 
+                # reset and prepare next iteration
                 self.received_counter = 0
                 self.graphs.append(
                     DirectedGraph(

@@ -14,13 +14,25 @@ sys.path.append("/eval/")
 from plotIDCA import (
     CIFAR_CLASSES,
     compute_rates,
+    get_per_cluster_stats,
 )
 
 CONFIGS = ["IFCA", "DPSGD", "IDCA", "DEPRL_V1", "DEPRL_V2", "DAC"]
-CONFIGS = ["IFCA_NO_GRAD", "IFCA", "IDCA_DEG_3", "IDCA_DEG_4", "IDCA_FC"]
-CONFIGS = ["B_8_r_5", "B_8_r_7", "B_8_r_10", "B_16_r_5", "B_16_r_7", "B_16_r_10", "B_32_r_5", "B_32_r_7", "B_32_r_10"]
-CONFIGS = ["no_lr", "lr"]
-CONFIGS = ["lr_0.1", "lr_0.05", "lr_0.01"]
+# CONFIGS = ["IFCA_NO_GRAD", "IFCA", "IDCA_DEG_3", "IDCA_DEG_4", "IDCA_FC"]
+# CONFIGS = ["B_8_r_5", "B_8_r_7", "B_8_r_10", "B_16_r_5", "B_16_r_7", "B_16_r_10", "B_32_r_5", "B_32_r_7", "B_32_r_10"]
+# CONFIGS = ["no_lr", "lr"]
+CONFIGS = [
+    "lr_0.1",
+    "lr_0.05",
+    "lr_0.01",
+    "lr_0.005",
+    "lr_0.001",
+    "lr_0.0005",
+]
+# CONFIGS = ["wd_0.1", "wd_0.01", "wd_0.001", "wd_0.0001", "lr_0.001"]
+# CONFIGS = ["f2lay", "all_conv_wd", "all_conv"]
+# CONFIGS = ["1_clust", "2_clust", "3_clust"]
+CONFIGS = ["val", "train"]
 
 
 def get_stats(data):
@@ -48,6 +60,19 @@ def plot(means, stdevs, mins, maxs, title, label, loc, xlabel="communication rou
     err = np.array(list(stdevs.values()))
     plt.plot(x_axis, y_axis, label=label)
     plt.fill_between(x_axis, y_axis - err, y_axis + err, alpha=0.4)
+    plt.legend(loc=loc)
+
+
+def per_cluster_plot(final_data, title, loc, xlabel="communication rounds", exp="none"):
+    for clust, data in final_data.items():
+        means, stdevs, mins, maxs = data
+        x_axis = np.array(list(means.keys()))
+        y_axis = np.array(list(means.values()))
+        err = np.array(list(stdevs.values()))
+        plt.plot(x_axis, y_axis, label=f"{exp}: cluster {clust}")
+        plt.fill_between(x_axis, y_axis - err, y_axis + err, alpha=0.4)
+    plt.xlabel(xlabel)
+    plt.title(title)
     plt.legend(loc=loc)
 
 
@@ -81,6 +106,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
                 continue
             files = os.listdir(mf_path)
             files = [f for f in files if f.endswith("_results.json")]
+            # files = [f"{machine_folder[-1]}_{f}" for f in files]
             files = [f for f in files if not f.startswith("-1")]  # remove server in IFCA
             for f in files:
                 filepath = os.path.join(mf_path, f)
@@ -88,6 +114,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
                     results.append(json.load(inf))
         each_results[subdir] = results
         print("Files", files)
+        print("len results", len(results))
 
     for subdir, results in each_results.items():
         subdir_path = os.path.join(folder_path, subdir)
@@ -117,7 +144,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         # Plot Training loss
         plt.figure(20)
         means, stdevs, mins, maxs = get_stats([x["train_loss"] for x in results])
-        plot(means, stdevs, mins, maxs, "Training Loss", config, "upper right")
+        plot(means, stdevs, mins, maxs, "Training Loss", config, "lower right")
 
         # handle the last artificial iteration for all reduce
         if list(iter(b_means.keys())) != list(iter(means.keys())):
@@ -137,6 +164,11 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         )
         plt.savefig(os.path.join(folder_path, "train_loss.png"), dpi=300)
 
+        plt.figure(111)
+        final_data = get_per_cluster_stats(results, metric="train_loss")
+        per_cluster_plot(final_data, "Training Loss per cluster", "lower right", exp=config)
+        plt.savefig(os.path.join(folder_path, "train_loss_clust.png"), dpi=300)
+
         plt.figure(11)
         means = replace_dict_key(means, b_means)
         plot(
@@ -146,7 +178,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             maxs,
             "Training Loss",
             config,
-            "upper right",
+            "lower right",
             "Total Bytes per node",
         )
         plt.savefig(os.path.join(folder_path, "bytes_train_loss.png"), dpi=300)
@@ -156,7 +188,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         # Plot Testing loss
         plt.figure(21)
         means, stdevs, mins, maxs = get_stats([x["test_loss"] for x in results])
-        plot(means, stdevs, mins, maxs, "Testing Loss", config, "upper right")
+        plot(means, stdevs, mins, maxs, "Testing Loss", config, "lower right")
         df = pd.DataFrame(
             {
                 "mean": list(means.values()),
@@ -169,6 +201,11 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         )
         plt.savefig(os.path.join(folder_path, "test_loss.png"), dpi=300)
 
+        plt.figure(212)
+        final_data = get_per_cluster_stats(results, metric="test_loss")
+        per_cluster_plot(final_data, "Testing Loss per cluster", "lower right", exp=config)
+        plt.savefig(os.path.join(folder_path, "test_loss_clust.png"), dpi=300)
+
         plt.figure(12)
         means = replace_dict_key(means, b_means)
         plot(
@@ -178,7 +215,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             maxs,
             "Testing Loss",
             config,
-            "upper right",
+            "lower right",
             "Total Bytes per node",
         )
         plt.savefig(os.path.join(folder_path, "bytes_test_loss.png"), dpi=300)
@@ -200,6 +237,11 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             columns=["mean", "std", "nr_nodes", "total_bytes"],
         )
         plt.savefig(os.path.join(folder_path, "test_acc.png"), dpi=300)
+
+        plt.figure(223)
+        final_data = get_per_cluster_stats(results, metric="test_acc")
+        per_cluster_plot(final_data, "Testing accuracy per cluster", "lower right", exp=config)
+        plt.savefig(os.path.join(folder_path, "test_acc_clust.png"), dpi=300)
 
         plt.figure(13)
         means = replace_dict_key(means, b_means)

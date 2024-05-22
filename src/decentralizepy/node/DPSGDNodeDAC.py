@@ -5,6 +5,7 @@ import logging
 import math
 import os
 from collections import deque
+from itertools import tee
 from typing import Dict
 
 import numpy as np
@@ -193,7 +194,7 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
         self.barrier = set()
 
         # for DAC
-        self.other_nodes = [i for i in range(self.graph.n_procs) if i != self.rank]
+        self.other_nodes = [i for i in range(self.graph.n_procs) if i != self.uid]
         self.one_over_loss = {idx: 0.0 for idx in self.other_nodes}
         self.prior_norm = {idx: 1.0 / (self.graph.n_procs - 1) for idx in self.other_nodes}
 
@@ -230,8 +231,15 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
 
         logging.info("Dataset instantiation complete.")
 
+        # The initialization of the models must be different for each node.
+        torch.manual_seed(random_seed * self.uid)
+        np.random.seed(random_seed * self.uid)
         self.model_class = getattr(dataset_module, dataset_configs["model_class"])
         self.model = self.model_class()
+
+        # Put back the previous seed
+        torch.manual_seed(random_seed)
+        np.random.seed(random_seed)
 
     def run(self):
         """
@@ -348,7 +356,7 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
 
     def get_incomming_neighbors(self):
         # reseed to have different randomness in nodes
-        np.random.seed(self.rank * self.orig_seed)
+        np.random.seed(self.uid * self.orig_seed)
 
         # handle case where there are not enough non-zero probabilities
         non_zero_indices = [i for i, p in self.prior_norm.items() if p > 0]
@@ -403,13 +411,18 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
         return True
 
     def compute_neighbors_model_losses(self, averaging_deque: Dict):
-        neighbors_data = averaging_deque.copy()
-        neigh_model = copy.deepcopy(self.model)
-        for neigh_rank, neigh_deque in neighbors_data.items():
-            neigh_state_dict = self.sharing.deserialized_model(neigh_deque[0])
-            neigh_model.load_state_dict(neigh_state_dict)
-            loss = self.dataset.get_model_loss_on_trainset(neigh_model, self.loss)
-            self.one_over_loss[neigh_rank] = 1.0 / loss
+        with torch.no_grad():
+            neighbors_data = averaging_deque.copy()
+            neigh_model = copy.deepcopy(self.model)
+            trainset_ori = self.dataset.get_trainset(
+                self.trainer.batch_size, self.trainer.shuffle
+            )  # all models eval on same samples
+            trainsets = tee(trainset_ori, len(neighbors_data))  # generator copy
+            for (neigh_rank, neigh_deque), trainset in zip(neighbors_data.items(), trainsets):
+                neigh_state_dict = self.sharing.deserialized_model(neigh_deque[0])
+                neigh_model.load_state_dict(neigh_state_dict)
+                loss = self.trainer.eval_loss_on_given_model(neigh_model, trainset)
+                self.one_over_loss[neigh_rank] = 1.0 / loss
 
     def compute_prior_normalized(self):
         tau = self.tau_function(self.iteration, self.tau_init, self.tau_coef)

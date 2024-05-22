@@ -51,54 +51,6 @@ if __name__ == "__main__":
     sm = args.server_machine
     sr = args.server_rank
 
-    import os
-    import sys
-
-    # print(sys.path)
-
-    # # Get the directory of the current script
-    # script_dir = os.path.dirname(os.path.abspath(__file__))
-    # print(script_dir)
-    # # Search for the temporary directory containing the copied files
-    # temp_dir = None
-    # for dirname in os.listdir(script_dir):
-    #     if dirname.startswith("tmp."):  # Assuming the temporary directory starts with "tmp."
-    #         temp_dir = os.path.join(script_dir, dirname)
-    #         break
-
-    # if not temp_dir:
-    #     # Assuming the 'src' directory is where the copied decentralizepy package resides
-    #     src_dir = os.path.join(temp_dir, "src")
-
-    #     # Insert the 'src' directory at the beginning of sys.path
-    #     sys.path.insert(0, src_dir)
-
-    try:
-        # Get the directory of the current script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-
-        # Traverse up the directory hierarchy until we find a directory that starts with "tmp."
-        parent_dir = script_dir
-        while not os.path.basename(parent_dir).startswith("tmp."):
-            parent_dir = os.path.dirname(parent_dir)
-
-            # If we reached the root directory and couldn't find the temporary directory, exit the loop
-            if parent_dir == os.path.dirname(parent_dir):
-                raise FileNotFoundError("Temporary directory not found.")
-
-        # Construct the path to the temporary directory
-        temp_dir = parent_dir
-
-        # Assuming the 'src' directory is where the copied decentralizepy package resides
-        src_dir = os.path.join(temp_dir, "src")
-
-        # Insert the 'src' directory at the beginning of sys.path
-        # sys.path.insert(0, src_dir)
-        sys.path.append(src_dir)
-
-    except FileNotFoundError:
-        print("Normal run")
-
     processes = []
     if sm == m_id:
         processes.append(

@@ -304,10 +304,11 @@ class DPSGDNodeIDCA(Node):
         logging.info("Dataset instantiation complete.")
 
         # The initialization of the models must be different for each node.
-        torch.manual_seed(random_seed * self.rank)
-        np.random.seed(random_seed * self.rank)
+        torch.manual_seed(random_seed * self.uid)
+        np.random.seed(random_seed * self.uid)
         self.model_class = getattr(dataset_module, dataset_configs["model_class"])
         self.models = [self.model_class() for _ in range(dataset_configs["number_of_clusters"])]  # type: List[Model]
+        # self.models = [self.model_class() for _ in range(1)]  # play with incorrect number of models
 
         if self.layers_sharing:
             self.share_layers()
@@ -321,9 +322,10 @@ class DPSGDNodeIDCA(Node):
         Share the layers of the models.
         To have a common representation across the models.
         """
-        layers = self.models[0].get_shared_layers()
-        for model in self.models[1:]:
-            model.set_shared_layers(layers)
+        with torch.no_grad():
+            layers = self.models[0].get_shared_layers()
+            for model in self.models[1:]:
+                model.set_shared_layers(layers)
 
     def init_optimizer_config(self, optimizer_configs):
         """
@@ -441,7 +443,7 @@ class DPSGDNodeIDCA(Node):
             self.iteration = iteration
 
             # best model choice in done in trainer
-            self.adjust_learning_rate(iteration)
+            # self.adjust_learning_rate(iteration)
             treshold_explo = self.compute_treshold(iteration)
             self.trainer.train(self.dataset, treshold_explo)
 

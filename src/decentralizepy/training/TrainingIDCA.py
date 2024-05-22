@@ -1,9 +1,12 @@
 import copy
 import logging
 import random
+from itertools import tee
 from typing import List
 
 import torch
+import torch.utils
+import torch.utils.data
 
 from decentralizepy import utils
 from decentralizepy.datasets.Dataset import Dataset
@@ -103,7 +106,9 @@ class TrainingIDCA(Training):
         if self.explore_models and random.uniform(0, 1) < treshold:
             # chosing a random model
             self.current_model_idx = random.randint(0, len(self.models) - 1)
-            self.models_losses = [self.eval_loss(model, dataset) for model in self.models]
+            trainset_ori = dataset.get_trainset(self.batch_size, self.shuffle)  # all models eval on same samples
+            trainsets = tee(trainset_ori, len(self.models))  # generator copy
+            self.models_losses = [self.eval_loss(model, trainset) for model, trainset in zip(self.models, trainsets)]
             self.current_model_loss = self.models_losses[self.current_model_idx]
             self.current_model = self.models[self.current_model_idx]
             self.current_model_is_best = False
@@ -130,9 +135,10 @@ class TrainingIDCA(Training):
 
         if self.layers_sharing:
             # share the layers of the trained model
-            layers = self.current_model.get_shared_layers()
-            for model in self.models:
-                model.set_shared_layers(layers)
+            with torch.no_grad():
+                layers = self.current_model.get_shared_layers()
+                for model in self.models:
+                    model.set_shared_layers(layers)
 
     def choose_best_model(self, dataset: Dataset):
         """
@@ -144,7 +150,11 @@ class TrainingIDCA(Training):
             treshold (float, optional): Treshold in [0, 1] to explore the space. If set to 0, no exploration is done.
         """
         # chosing the best model
-        self.models_losses = [self.eval_loss(model, dataset) for model in self.models]
+        trainset_ori = dataset.get_trainset(self.batch_size, self.shuffle)  # all models eval on same samples
+        # trainset_ori = dataset.get_validationset(self.batch_size, self.shuffle)  # all models eval on same samples
+        # logging.debug(f"using validation set of size {len(trainset_ori)}")
+        trainsets = tee(trainset_ori, len(self.models))  # generator copy
+        self.models_losses = [self.eval_loss(model, trainset) for model, trainset in zip(self.models, trainsets)]
         self.current_model_loss = min(self.models_losses)
         self.current_model_idx = self.models_losses.index(self.current_model_loss)
         self.current_model = self.models[self.current_model_idx]
@@ -208,29 +218,28 @@ class TrainingIDCA(Training):
                 if count >= self.rounds:
                     break
 
-    def eval_loss(self, model: Model, dataset: Dataset):
+    def eval_loss(self, model: Model, trainset: torch.utils.data.DataLoader):
         """
         Evaluate the loss on the training set on the given model
 
         Args:
             model (decentralizepy.models.Model): The model to evaluate.
-            dataset (decentralizepy.datasets.Dataset): The training dataset. Should implement get_trainset(batch_size, shuffle)
+            dataset (torch.utils.Dataloader): The training dataset.
 
         Returns:
             float: Loss value
         """
         model.eval()  # set the model to inference mode
-        trainset = dataset.get_trainset(self.batch_size, self.shuffle)
         epoch_loss = 0.0
         count = 0
         with torch.no_grad():
             for data, target in trainset:
+                logging.debug("Target: {}".format(target))
                 output = model(data)
                 loss_val = self.loss(output, target)
                 epoch_loss += loss_val.item()
                 count += 1
                 if not self.full_epochs:
-                    # early exit for debug settings (not full epochs)
                     if count >= self.rounds:
                         break
         loss = epoch_loss / count

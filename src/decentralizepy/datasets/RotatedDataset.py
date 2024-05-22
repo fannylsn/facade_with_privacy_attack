@@ -30,6 +30,13 @@ class RotatedDataset(DatasetClustered):
         else:
             raise ValueError("Rotation transform not implemented for {} clusters".format(self.number_of_clusters))
 
+    def get_color_transform(self) -> torchvision.transforms.ColorJitter:
+        if self.number_of_clusters == 2:
+            if self.cluster == 1:
+                return torchvision.transforms.Grayscale(num_output_channels=3)
+            else:
+                return NullTransform()
+
     def load_trainset(self):
         """
         Loads the training set. Partitions it if needed.
@@ -39,7 +46,6 @@ class RotatedDataset(DatasetClustered):
         trainset = self.get_dataset_object(train=True)
         # try to overfit a small part (sanity check) !!
         # trainset = torch.utils.data.Subset(trainset, range(0, 160))
-
         # in case the val set is extracted from the train set
         if self.__validating__ and self.validation_source == "Train":
             logging.info("Extracting the validation set from the train set.")
@@ -55,31 +61,17 @@ class RotatedDataset(DatasetClustered):
             self.sizes = []
             for i in range(self.number_of_clusters):
                 node_in_cluster_i = sum([idx == i for idx in self.clusters_idx])
-                if self.duplicate_datasets:
-                    e = c_len // node_in_cluster_i
-                    frac = e / c_len
-                    self.sizes.append([frac] * node_in_cluster_i)
-                    self.sizes[i][-1] += 1.0 - frac * node_in_cluster_i
-                else:
-                    e = c_len // self.num_nodes
-                    frac = e / c_len
-                    self.sizes.append([frac] * node_in_cluster_i)
-                    self.sizes[i][-1] += (1.0 / self.number_of_clusters) - frac * node_in_cluster_i
+                e = c_len // node_in_cluster_i
+                frac = e / c_len
+                self.sizes.append([frac] * node_in_cluster_i)
+                self.sizes[i][-1] += 1.0 - frac * node_in_cluster_i
             logging.debug("Size fractions: {}".format(self.sizes))
 
-        if self.duplicate_datasets:
-            self.data_partitioner = DataPartitioner(
-                trainset,
-                sizes=self.sizes[self.cluster],
-                seed=self.random_seed,
-            )
-        else:
-            # current way
-            self.data_partitioner = DataPartitioner(
-                trainset,
-                sizes=[x for sublist in self.sizes for x in sublist],
-                seed=self.random_seed,
-            )
+        self.data_partitioner = DataPartitioner(
+            trainset,
+            sizes=self.sizes[self.cluster],
+            seed=self.random_seed,
+        )
 
         self.trainset = self.data_partitioner.use(self.dataset_id)
         logging.info(f"The training set has {len(self.trainset)} samples.")
@@ -90,14 +82,19 @@ class RotatedDataset(DatasetClustered):
 
         """
         logging.info("Loading testing set.")
-        testset = self.get_dataset_object(train=False)
+        self.testset = self.get_dataset_object(train=False)
         # try to overfit a small part (sanity check) !!
         # testset = torch.utils.data.Subset(testset, range(0, 10))
 
         if self.__validating__ and self.validation_source == "Test":
             logging.info("Extracting the validation set from the test set.")
             self.validationset, self.testset = torch.utils.data.random_split(
-                testset,
+                self.testset,
                 [self.validation_size, 1 - self.validation_size],
                 torch.Generator().manual_seed(self.random_seed),
             )
+
+
+class NullTransform:
+    def __call__(self, sample):
+        return sample

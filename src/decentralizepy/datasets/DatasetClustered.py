@@ -87,14 +87,10 @@ class DatasetClustered(Dataset):
         logging.debug("Clusters idx: {}".format(self.clusters_idx))
         logging.debug("Cluster: {}".format(self.cluster))
 
-        # to have the full dataset for each cluster (IFCA were doing it this way with rotations)
-        self.duplicate_datasets = False
-        if self.duplicate_datasets:
-            self.dataset_id = sum(
-                [idx == self.cluster for idx in self.clusters_idx[: self.uid]]
-            )  # id of the dataset in the cluster of the node
-        else:
-            self.dataset_id = self.uid
+        # carefull, we dont duplicated one dataset per rotated clusted like IFCA.
+        self.dataset_id = sum(
+            [idx == self.cluster for idx in self.clusters_idx[: self.uid]]
+        )  # id of the dataset in the cluster of the node
 
     def assign_cluster(self):
         """Generate the cluster assignment for the current process."""
@@ -168,7 +164,7 @@ class DatasetClustered(Dataset):
             return DataLoader(self.testset, batch_size=self.test_batch_size)
         raise RuntimeError("Test set not initialized!")
 
-    def get_validationset(self) -> DataLoader:
+    def get_validationset(self, batchsize=None, Shuffle=None) -> DataLoader:
         """
         Function to get the validation set
 
@@ -182,9 +178,18 @@ class DatasetClustered(Dataset):
             If the test set was not initialized
 
         """
+        if batchsize is None:
+            batchsize = self.test_batch_size
         if self.__validating__:
-            return DataLoader(self.validationset, batch_size=self.test_batch_size)
+            return DataLoader(self.validationset, batch_size=batchsize, shuffle=Shuffle)
         raise RuntimeError("Validation set not initialized!")
+
+        # def get_validationset(self, batch_size=None, shuffle=False) -> DataLoader:
+        #     if batch_size is None:
+        #         batch_size = self.test_batch_size
+        #     if self.__validating__:
+        #         return DataLoader(self.validationset, batch_size=batch_size, shuffle=shuffle)
+        #     raise RuntimeError("Validation set not initialized!")
 
     def test(self, models: Union[List[Model], Model], loss_func):
         """
@@ -380,26 +385,3 @@ class DatasetClustered(Dataset):
                     per_sample_true.extend(labels.tolist())
 
         return per_sample_loss, per_sample_pred, per_sample_true
-
-    def get_model_loss_on_trainset(self, model: Model, loss_func):
-        """
-        Compute the loss of the model on the training set.
-
-        Args:
-            model (decentralizepy.models.Model): The model to evaluate.
-            loss_func (torch.nn.loss): The loss function to use
-
-        Returns:
-            float: The loss of the model on the training set.
-        """
-        model.eval()
-        dataset = self.get_trainset()
-        with torch.no_grad():
-            loss_val = 0.0
-            count = 0
-            for elems, labels in dataset:
-                outputs = model(elems)
-                loss_val += loss_func(outputs, labels).item()
-                count += 1
-
-        return loss_val / count

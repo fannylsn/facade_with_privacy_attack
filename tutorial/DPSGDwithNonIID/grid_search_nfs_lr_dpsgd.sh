@@ -23,8 +23,8 @@ env_python=$python_bin/python
 
 #copy stuff
 cp $nfs_decpy/download_dataset.py $machine_decpy/
-cp $nfs_decpy/setup.py $machine_decpy/
-cp $nfs_decpy/setup.cfg $machine_decpy/
+# cp $nfs_decpy/setup.py $machine_decpy/
+# cp $nfs_decpy/setup.cfg $machine_decpy/
 cp -r $nfs_decpy/src $machine_decpy/
 
 #activate the virtual environment and PIP INSTSLL !! to update the decpy pacakge
@@ -58,20 +58,23 @@ do
     $python_bin/crudini --set $run_path/$config_file COMMUNICATION addresses_filepath $ip_machines
 
     echo iterations $iterations
-    echo M is $m
     echo procs per machine is $procs_per_machine
+    echo lr is $lr
 
-    log_dir_from_decpy=eval/data/$prefix_dir/lr_$lr_$(date '+%Y-%m-%dT%H:%M')
+    log_dir_from_decpy=eval/data/$prefix_dir/lr_$lr$(date '+%Y-%m-%dT%H:%M')
     log_dir=$machine_decpy/$log_dir_from_decpy/machine$m # in the eval folder
     echo $log_dir
     mkdir -p $log_dir
     start=$(date '+%s')
+
     $env_python $eval_file -ro 0 -tea $test_after -ld $log_dir -mid $m -ps $procs_per_machine -ms $machines -is $iterations -ta $test_after -cf $run_path/$config_file -ll $log_level -wsd $log_dir
     # touch $log_dir/started
     # sleep 2
+
     end=$(date '+%s')
     duration=$((end-start))
     echo "$((duration / 60)) minutes and $((duration % 60)) seconds elapsed."
+
     #copy back the files
     mkdir -p $nfs_decpy/$log_dir_from_decpy
     cp -r $log_dir/ $nfs_decpy/$log_dir_from_decpy

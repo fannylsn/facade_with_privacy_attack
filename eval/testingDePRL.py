@@ -45,7 +45,7 @@ if __name__ == "__main__":
     n_machines = args.machines
     procs_per_machine = args.procs_per_machine[0]
     # with peer sampler, this initial graph is never used (exept to get the number of nodes)
-    g = Regular(n_machines * procs_per_machine, my_config["NODE"]["graph_degree"])
+    g = Regular(n_machines * procs_per_machine, my_config["NODE"]["graph_degree"], my_config["DATASET"]["random_seed"])
     m_id = args.machine_id
 
     sm = args.server_machine

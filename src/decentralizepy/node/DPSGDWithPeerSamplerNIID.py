@@ -4,6 +4,8 @@ import logging
 import os
 from collections import deque
 from typing import Dict
+import torch
+import numpy as np
 
 from decentralizepy import utils
 from decentralizepy.graphs.FullyConnected import FullyConnected
@@ -158,6 +160,40 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         logging.debug("type(graph): %s", str(type(self.rank)))
         logging.debug("type(mapping): %s", str(type(self.mapping)))
 
+    def init_dataset_model(self, dataset_configs):
+        """
+        Instantiate dataset and model from config.
+
+        Parameters
+        ----------
+        dataset_configs : dict
+            Python dict containing dataset config params
+
+        """
+        dataset_module = importlib.import_module(dataset_configs["dataset_package"])
+        self.dataset_class = getattr(dataset_module, dataset_configs["dataset_class"])
+        random_seed = dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
+        torch.manual_seed(random_seed)
+        np.random.seed(random_seed)
+        self.dataset_params = utils.remove_keys(
+            dataset_configs,
+            ["dataset_package", "dataset_class", "model_class"],
+        )
+        self.dataset = self.dataset_class(self.rank, self.machine_id, self.mapping, **self.dataset_params)
+
+        logging.info("Dataset instantiation complete.")
+
+        # The initialization of the models must be different for each node.
+        torch.manual_seed(random_seed * self.uid)
+        np.random.seed(random_seed * self.uid)
+
+        self.model_class = getattr(dataset_module, dataset_configs["model_class"])
+        self.model = self.model_class()
+
+        # Put back the previous seed
+        torch.manual_seed(random_seed)
+        np.random.seed(random_seed)
+
     def init_trainer(self, train_configs):
         """
         Instantiate training module and loss from config.
@@ -230,7 +266,7 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
             self.iteration = iteration
 
             # training
-            self.adjust_learning_rate(iteration)
+            # self.adjust_learning_rate(iteration)
             self.trainer.train(self.dataset)
 
             # sharing

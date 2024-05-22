@@ -1,8 +1,12 @@
 import logging
+import time
 
 import torch
+import torch.utils
+import torch.utils.data
 
 from decentralizepy.datasets.Dataset import Dataset
+from decentralizepy.models.Model import Model
 from decentralizepy.training.Training import Training
 
 
@@ -82,3 +86,32 @@ class TrainingNIID(Training):
                 losses = loss_func(output, target)
                 per_sample_loss.extend(losses.tolist())
         return per_sample_loss
+
+    def eval_loss_on_given_model(self, model: Model, trainset: torch.utils.data.DataLoader):
+        """
+        Evaluate the loss on the training set on the given model
+
+        Args:
+            model (decentralizepy.models.Model): The model to evaluate.
+            dataset (decentralizepy.datasets.Dataset): The training dataset. Should implement get_trainset(batch_size, shuffle)
+
+        Returns:
+            float: Loss value
+        """
+        time_start = time.time()
+        model.eval()  # set the model to inference mode
+        epoch_loss = 0.0
+        count = 0
+        with torch.no_grad():
+            for data, target in trainset:
+                output = model(data)
+                loss_val = self.loss(output, target)
+                epoch_loss += loss_val.item()
+                count += 1
+                if not self.full_epochs:
+                    if count >= self.rounds:
+                        break
+        loss = epoch_loss / count
+        logging.info(f"Loss after {count} iteration: {loss}")
+        logging.debug(f"Time taken: {time.time() - time_start}")
+        return loss

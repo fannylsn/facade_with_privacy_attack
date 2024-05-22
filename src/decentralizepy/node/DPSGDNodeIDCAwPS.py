@@ -183,11 +183,11 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
         self.message_queue = dict()
 
         self.barrier = set()
-        self.my_neighbors = self.graph.neighbors(self.uid)
+        self.my_neighbors = self.graph.neighbors(self.uid)  # could remove
 
         self.init_sharing(config["SHARING"])
         self.peer_deques = dict()
-        self.connect_neighbors()
+        self.connect_neighbors()  # could remove
 
     def init_node(self, node_config):
         """
