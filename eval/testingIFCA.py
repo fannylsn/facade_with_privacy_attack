@@ -3,7 +3,6 @@ from pathlib import Path
 from shutil import copy
 
 from decentralizepy import utils
-from decentralizepy.graphs.Graph import Graph
 from decentralizepy.mappings.Linear import Linear
 from decentralizepy.node.DPSGDNodeFederatedIFCA import DPSGDNodeFederatedIFCA
 from decentralizepy.node.FederatedParameterServerIFCA import (
@@ -42,7 +41,6 @@ if __name__ == "__main__":
         my_config[section] = dict(config.items(section))
 
     copy(args.config_file, args.log_dir)
-    copy(args.graph_file, args.log_dir)
     utils.write_args(args, args.log_dir)
 
     n_machines = args.machines

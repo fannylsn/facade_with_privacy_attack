@@ -18,6 +18,7 @@ from decentralizepy.models.Model import Model  # noqa: F401
 from decentralizepy.node.Node import Node
 from decentralizepy.sharing.IFCASharing import IFCASharing  # noqa: F401
 from decentralizepy.training.TrainingIDCA import TrainingIDCA  # noqa: F401
+from decentralizepy.utils_learning_rates import get_lr_step_7_9
 
 
 class DPSGDNodeFederatedIFCA(Node):
@@ -88,10 +89,13 @@ class DPSGDNodeFederatedIFCA(Node):
 
         """
 
+        # for early restarts
+        self.return_dict = None
+        if len(args) > 0:
+            self.return_dict = args[0]
+
         total_threads = os.cpu_count()
-        self.threads_per_proc = max(
-            math.floor(total_threads / mapping.get_local_procs_count()), 1
-        )
+        self.threads_per_proc = max(math.floor(total_threads / mapping.get_local_procs_count()), 1)
         torch.set_num_threads(self.threads_per_proc)
         torch.set_num_interop_threads(1)
         self.instantiate(
@@ -108,9 +112,7 @@ class DPSGDNodeFederatedIFCA(Node):
             reset_optimizer,
             *args,
         )
-        logging.info(
-            "Each proc uses %d threads out of %d.", self.threads_per_proc, total_threads
-        )
+        logging.info("Each proc uses %d threads out of %d.", self.threads_per_proc, total_threads)
 
         self.message_queue["PEERS"] = deque()
 
@@ -185,6 +187,7 @@ class DPSGDNodeFederatedIFCA(Node):
         self.init_optimizer_config(config["OPTIMIZER_PARAMS"])
         self.init_trainer(config["TRAIN_PARAMS"])
         self.init_comm(config["COMMUNICATION"])
+        self.init_node(config["NODE"])
 
         self.message_queue = dict()
 
@@ -261,9 +264,7 @@ class DPSGDNodeFederatedIFCA(Node):
         comm_class = getattr(comm_module, comm_configs["comm_class"])
         comm_params = utils.remove_keys(comm_configs, ["comm_package", "comm_class"])
         self.addresses_filepath = comm_params.get("addresses_filepath", None)
-        self.communication = comm_class(
-            self.rank, self.machine_id, self.mapping, self.n_procs, **comm_params
-        )  # type: Communication
+        self.communication = comm_class(self.rank, self.machine_id, self.mapping, self.n_procs, **comm_params)  # type: Communication
 
     def init_dataset_models_parrallel(self, dataset_configs):
         """
@@ -277,18 +278,14 @@ class DPSGDNodeFederatedIFCA(Node):
         """
         dataset_module = importlib.import_module(dataset_configs["dataset_package"])
         self.dataset_class = getattr(dataset_module, dataset_configs["dataset_class"])
-        random_seed = (
-            dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
-        )
+        random_seed = dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
         torch.manual_seed(random_seed)
-        np.random.seed(random_seed)
+        np.random.seed(int(random_seed))
         self.dataset_params = utils.remove_keys(
             dataset_configs,
             ["dataset_package", "dataset_class", "model_class"],
         )
-        self.dataset = self.dataset_class(
-            self.rank, self.machine_id, self.mapping, **self.dataset_params
-        )  # type: RotatedDataset
+        self.dataset = self.dataset_class(self.rank, self.machine_id, self.mapping, **self.dataset_params)  # type: RotatedDataset
 
         logging.info("Dataset instantiation complete.")
 
@@ -297,9 +294,7 @@ class DPSGDNodeFederatedIFCA(Node):
         torch.manual_seed(random_seed * self.rank)
         np.random.seed(random_seed * self.rank)
         self.model_class = getattr(dataset_module, dataset_configs["model_class"])
-        self.models = [
-            self.model_class() for _ in range(dataset_configs["number_of_clusters"])
-        ]  # type: List[Model]
+        self.models = [self.model_class() for _ in range(dataset_configs["number_of_clusters"])]  # type: List[Model]
 
         # Put back the previous seed
         torch.manual_seed(random_seed)
@@ -315,15 +310,9 @@ class DPSGDNodeFederatedIFCA(Node):
             Python dict containing optimizer config params
 
         """
-        optimizer_module = importlib.import_module(
-            optimizer_configs["optimizer_package"]
-        )
-        self.optimizer_class = getattr(
-            optimizer_module, optimizer_configs["optimizer_class"]
-        )
-        self.optimizer_params = utils.remove_keys(
-            optimizer_configs, ["optimizer_package", "optimizer_class"]
-        )
+        optimizer_module = importlib.import_module(optimizer_configs["optimizer_package"])
+        self.optimizer_class = getattr(optimizer_module, optimizer_configs["optimizer_class"])
+        self.original_optimizer_params = utils.remove_keys(optimizer_configs, ["optimizer_package", "optimizer_class"])
 
     def init_trainer(self, train_configs):
         """
@@ -340,8 +329,8 @@ class DPSGDNodeFederatedIFCA(Node):
 
         loss_package = importlib.import_module(train_configs["loss_package"])
         if "loss_class" in train_configs.keys():
-            loss_class = getattr(loss_package, train_configs["loss_class"])
-            self.loss = loss_class()
+            self.loss_class = getattr(loss_package, train_configs["loss_class"])
+            self.loss = self.loss_class()
         else:
             self.loss = getattr(loss_package, train_configs["loss"])
 
@@ -361,7 +350,7 @@ class DPSGDNodeFederatedIFCA(Node):
             self.mapping,
             self.models,
             self.optimizer_class,
-            self.optimizer_params,
+            self.original_optimizer_params.copy(),
             self.loss,
             self.log_dir,
             **train_params,
@@ -379,9 +368,7 @@ class DPSGDNodeFederatedIFCA(Node):
         """
         sharing_package = importlib.import_module(sharing_configs["sharing_package"])
         self.sharing_class = getattr(sharing_package, sharing_configs["sharing_class"])
-        sharing_params = utils.remove_keys(
-            sharing_configs, ["sharing_package", "sharing_class"]
-        )
+        sharing_params = utils.remove_keys(sharing_configs, ["sharing_package", "sharing_class"])
         self.sharing = self.sharing_class(
             self.rank,
             self.machine_id,
@@ -391,6 +378,16 @@ class DPSGDNodeFederatedIFCA(Node):
             self.log_dir,
             **sharing_params,
         )  # type: IFCASharing
+
+    def init_node(self, node_config):
+        """
+        Initialize the node attribute.
+
+        Args:
+            node_config (dict): Configuration of the node
+        """
+        self.log_per_sample_loss = node_config["log_per_sample_loss"]
+        self.log_per_sample_pred_true = node_config["log_per_sample_pred_true"]
 
     def run(self):
         """
@@ -414,8 +411,17 @@ class DPSGDNodeFederatedIFCA(Node):
                 self.barrier.remove(sender)
                 break
 
+            # for early restarts
+            if "RESTART" in data:
+                logging.debug("Received {} from {}".format("RESTART", sender))
+                self.barrier.remove(sender)
+                self.return_dict["early_stop"] = True
+                break
+
             iteration = data["iteration"]
             self.sharing.recieve_data_node(data)
+            # after recieving, the current is not the best anymore
+            self.trainer.current_model_is_best = False
 
             logging.debug(
                 "Received worker request at node {}, global iteration {}, local round {}".format(
@@ -441,18 +447,27 @@ class DPSGDNodeFederatedIFCA(Node):
                     logging.info("evaluating on validation set.")
                     results_dict = self.eval_on_validationset(results_dict, iteration)
 
-            # training
-            logging.info("Starting training iteration")
-            # No exploration by design in raw IFCA -> treshold = 0
-            self.trainer.train(self.dataset, 0)
-
             if rounds_to_train_evaluate == 0:
                 logging.info("Evaluating on train set.")
                 rounds_to_train_evaluate = self.train_evaluate_after
-                results_dict = self.log_best_model_train_loss(results_dict, iteration)
+                results_dict = self.compute_best_model_log_train_loss(results_dict, iteration)
 
             self.write_results_dict(results_dict)
 
+            # training
+            logging.info("Starting training iteration")
+            # No exploration by design in raw IFCA -> treshold = 0
+            # self.adjust_learning_rate(iteration)
+            self.trainer.train(self.dataset, 0)
+
+            #######
+            # with torch.no_grad():
+            #     model = self.models[self.trainer.current_model_idx]
+            #     new_state_dict = model.state_dict().copy()  # Create a copy of the state dict
+            #     for k, v in new_state_dict.items():
+            #         new_state_dict[k] = torch.ones_like(v) * self.rank
+            #     model.load_state_dict(new_state_dict)  # Update the model's parameters
+            #######
             # Send update to server
             to_send = self.sharing.get_data_to_send_node(self.trainer.current_model_idx)
             to_send["CHANNEL"] = "DPSGD"
@@ -462,6 +477,19 @@ class DPSGDNodeFederatedIFCA(Node):
             self.participated += 1
 
         logging.info("Server disconnected. Process complete!")
+
+    def adjust_learning_rate(self, iteration: int):
+        """Adjust the learning rate based on the iteration number.
+
+        Args:
+            iteration (int): current iteration
+
+        """
+        ratio = iteration / self.iterations
+        new_params = self.original_optimizer_params.copy()
+        new_params["lr"] = get_lr_step_7_9(ratio, new_params["lr"])
+        logging.debug(f"learning rate: {new_params['lr']}")
+        self.trainer.update_optimizer_params(new_params)  # only updates params of trainer, not node
 
     def get_results_dict(self):
         """Get the results dictionary, or create it."""
@@ -486,6 +514,12 @@ class DPSGDNodeFederatedIFCA(Node):
                 "total_meta": {},
                 "total_data_per_n": {},
             }
+            if self.log_per_sample_loss:
+                results_dict["per_sample_loss_test"] = {}
+                results_dict["per_sample_loss_train"] = {}
+            if self.log_per_sample_pred_true:
+                results_dict["per_sample_pred_test"] = {}
+                results_dict["per_sample_true_test"] = {}
         return results_dict
 
     def log_metadata(self, results_dict, iteration):
@@ -500,9 +534,7 @@ class DPSGDNodeFederatedIFCA(Node):
         if hasattr(self.communication, "total_meta"):
             results_dict["total_meta"][iteration + 1] = self.communication.total_meta
         if hasattr(self.communication, "total_data"):
-            results_dict["total_data_per_n"][iteration + 1] = (
-                self.communication.total_data
-            )
+            results_dict["total_data_per_n"][iteration + 1] = self.communication.total_data
         return results_dict
 
     def write_results_dict(self, results_dict):
@@ -511,12 +543,10 @@ class DPSGDNodeFederatedIFCA(Node):
         Args:
             results_dict (_type_): _description_
         """
-        with open(
-            os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w"
-        ) as of:
+        with open(os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w") as of:
             json.dump(results_dict, of)
 
-    def log_best_model_train_loss(self, results_dict, iteration):
+    def compute_best_model_log_train_loss(self, results_dict, iteration):
         """Compute the train loss on the best model and save the plot.
 
         This is done after the averaging of models across neighboors.
@@ -528,6 +558,11 @@ class DPSGDNodeFederatedIFCA(Node):
         if not self.trainer.current_model_is_best:
             # If the current model is not the best, we need to choose the best model
             self.trainer.choose_best_model(self.dataset)
+
+        if self.log_per_sample_loss:
+            # log the per sample loss for MIA
+            self.compute_log_per_sample_loss_train(results_dict, iteration)
+
         training_loss = self.trainer.get_current_model_loss()
         all_losses = self.trainer.get_all_models_loss()
 
@@ -544,6 +579,20 @@ class DPSGDNodeFederatedIFCA(Node):
         )
         self.save_plot_models(results_dict["all_train_loss"])
 
+        return results_dict
+
+    def compute_log_per_sample_loss_train(self, results_dict: Dict, iteration: int):
+        """Compute the per sample loss for the current model.
+        Best model must be chosen before calling this function.
+        Args:
+            results_dict (dict): Dictionary containing the results
+            iteration (int): current iteration
+        Returns:
+            dict: Dictionary containing the results
+        """
+        loss_func = self.loss_class(reduction="none")
+        per_sample_loss_tr = self.trainer.compute_per_sample_loss(self.dataset, loss_func)
+        results_dict["per_sample_loss_train"][str(iteration + 1)] = json.dumps(per_sample_loss_tr)
         return results_dict
 
     def save_plot(self, coords, label, title, xlabel, filename):
@@ -600,6 +649,35 @@ class DPSGDNodeFederatedIFCA(Node):
         results_dict["test_acc"][iteration + 1] = ta
         results_dict["test_loss"][iteration + 1] = tl
         results_dict["test_best_model_idx"][iteration + 1] = bidx
+
+        # log some metrics for MIA and fairness
+        self.compute_log_per_sample_metrics_test(results_dict, iteration, bidx)
+
+        return results_dict
+
+    def compute_log_per_sample_metrics_test(self, results_dict: Dict, iteration: int, best_idx: int):
+        """Compute the per sample metrics for the given model, if the flags are set.
+        Args:
+            results_dict (dict): Dictionary containing the results
+            iteration (int): current iteration
+        Returns:
+            dict: Dictionary containing the results
+        """
+        loss_func = self.loss_class(reduction="none")
+        model = self.models[best_idx]
+
+        # only log last iteration
+        last_iteration = self.iterations - 1 - (self.iterations - 1) % self.train_evaluate_after
+        log_pred_this_iter = self.log_per_sample_pred_true and iteration == last_iteration
+
+        per_sample_loss, per_sample_pred, per_sample_true = self.dataset.compute_per_sample_loss(
+            model, loss_func, False, self.log_per_sample_loss, log_pred_this_iter
+        )
+        if self.log_per_sample_loss:
+            results_dict["per_sample_loss_test"][str(iteration + 1)] = json.dumps(per_sample_loss)
+        if log_pred_this_iter:
+            results_dict["per_sample_pred_test"][str(iteration + 1)] = json.dumps(per_sample_pred)
+            results_dict["per_sample_true_test"][str(iteration + 1)] = json.dumps(per_sample_true)
         return results_dict
 
     def eval_on_validationset(self, results_dict: Dict, iteration):

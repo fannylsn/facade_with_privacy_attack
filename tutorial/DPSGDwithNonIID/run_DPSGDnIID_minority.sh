@@ -4,50 +4,52 @@
 decpy_path=./eval # Path to eval folder
 run_path=./eval/data # Path to the folder where the graph and config file will be copied and the results will be stored
 prefix_dir=experiment_minority_DPSGDnIID_$(date '+%Y-%m-%dT%H:%M')
-env_python=./.venv/decentralizepy_env/bin/python
-
+python_bin=./.venv/decentralizepy_env/bin
+env_python=$python_bin/python
 script_path=./tutorial/DPSGDwithNonIID # Path to the folder where the run_IDCAwPS.sh is located
+eval_file=$decpy_path/testingDPSGDnIID.py # decentralized driver code (run on each machine)
 
 machines=1 # number of machines in the runtime
 iterations=80
 test_after=4
-eval_file=$decpy_path/testingDPSGDnIID.py # decentralized driver code (run on each machine)
 log_level=INFO #INFO # DEBUG | INFO | WARN | CRITICAL
 
 m=0 # machine id corresponding consistent with ip.json
 
 echo "All started at $(date '+%Y-%m-%dT%H:%M')!"
 
+config_file=config_exp_minority.ini
+config_file_path=$script_path/configs/$config_file
+configs=(4 3 2 1)
+seeds=(12 34) #56, 78, 90,)
 
-for config in 1 2 3 4
+for config in ${configs[@]}
 do
-    if [ $config -eq 1 ]
-    then
-        config_file=config_1to1_DPSGDnIID.ini
-        procs_per_machine=32 #16 vs 16
-    elif [ $config -eq 2 ]
-    then
-        config_file=config_1to2_DPSGDnIID.ini
-        procs_per_machine=24 #16 vs 8
-    elif [ $config -eq 3 ]
-    then
-        config_file=config_1to4_DPSGDnIID.ini
-        procs_per_machine=20 #16 vs 4
-    elif [ $config -eq 4 ]
-    then
-        config_file=config_1to8_DPSGDnIID.ini
-        procs_per_machine=18 #16 vs 2
-    fi
+    echo "Config $config"
+    case $config in
+        1)
+            $python_bin/crudini --set $config_file_path DATASET sizes "[[1/16]*16,[1/16]*16]"
+            procs_per_machine=32 ;;
+        2)
+            $python_bin/crudini --set $config_file_path DATASET sizes "[[1/16]*16,[1/16]*8]"
+            procs_per_machine=24 ;;
+        3)
+            $python_bin/crudini --set $config_file_path DATASET sizes "[[1/16]*16,[1/16]*4]"
+            procs_per_machine=20 ;;
+        4)
+            $python_bin/crudini --set $config_file_path DATASET sizes "[[1/16]*16,[1/16]*2]"
+            procs_per_machine=18 ;;
+    esac
 
-    cp $decpy_path/step_configs/$config_file $run_path
+    cp $config_file_path $run_path
 
     echo M is $m
     echo procs per machine is $procs_per_machine
 
-    for seed in 1111 2222 3333 4444 5555
+    for seed in ${seeds[@]}
     do
-        field_name=random_seed
-        sed -i "s/\($field_name *= *\).*/\1$seed/" $run_path/$config_file
+        echo "Seed $seed"
+        $python_bin/crudini --set $run_path/$config_file DATASET random_seed $seed
 
         log_dir=$run_path/$prefix_dir/config$config/$(date '+%Y-%m-%dT%H:%M')/machine$m # in the eval folder
         echo $log_dir

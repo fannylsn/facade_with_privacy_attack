@@ -1,12 +1,9 @@
 import importlib
-import json
 import logging
 import math
 import os
-from collections import deque
 from typing import Dict, List  # noqa: F401
 
-import numpy as np
 import torch
 
 from decentralizepy.communication.Communication import Communication  # noqa: F401
@@ -67,7 +64,9 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
                 training_class = Training
                 epochs_per_round = 25
                 batch_size = 64
-            [GRAPH]
+            [NODE]
+                log_per_sample_loss = False
+                log_per_sample_pred_true = False
                 graph_package = decentralizepy.graphs.Regular
                 graph_class = Regular
                 graph_degree = 3
@@ -92,9 +91,7 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
         """
 
         total_threads = os.cpu_count()
-        self.threads_per_proc = max(
-            math.floor(total_threads / mapping.get_local_procs_count()), 1
-        )
+        self.threads_per_proc = max(math.floor(total_threads / mapping.get_local_procs_count()), 1)
         torch.set_num_threads(self.threads_per_proc)
         torch.set_num_interop_threads(1)
         self.instantiate(
@@ -111,9 +108,7 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
             reset_optimizer,
             *args,
         )
-        logging.info(
-            "Each proc uses %d threads out of %d.", self.threads_per_proc, total_threads
-        )
+        logging.info("Each proc uses %d threads out of %d.", self.threads_per_proc, total_threads)
         self.run()
 
     def instantiate(
@@ -179,42 +174,48 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
             train_evaluate_after,
             reset_optimizer,
         )
+        self.init_node(config["NODE"])
         self.init_dataset_models_parrallel(config["DATASET"])
         self.init_optimizer_config(config["OPTIMIZER_PARAMS"])
         self.init_trainer(config["TRAIN_PARAMS"])
         self.init_comm(config["COMMUNICATION"])
-        self.init_graph(config["GRAPH"])
 
         self.message_queue = dict()
 
         self.barrier = set()
-        self.my_neighbors = self.graph.neighbors(self.uid)
+        self.my_neighbors = self.graph.neighbors(self.uid)  # could remove
 
         self.init_sharing(config["SHARING"])
         self.peer_deques = dict()
-        self.connect_neighbors()
+        self.connect_neighbors()  # could remove
 
-    def init_graph(self, graph_config):
+    def init_node(self, node_config):
         """
-        Initialize the graph object.
+        Initialize the node atribute and the graph object.
 
         Parameters
         ----------
-        graph_config : dict
+        node_config : dict
             Configuration for the graph
 
         """
-        graph_package = importlib.import_module(graph_config["graph_package"])
-        self.graph_class = getattr(graph_package, graph_config["graph_class"])
+        self.log_per_sample_loss = node_config["log_per_sample_loss"]
+        self.log_per_sample_pred_true = node_config["log_per_sample_pred_true"]
+        self.do_all_reduce_models = node_config["do_all_reduce_models"]
+        self.layers_sharing = node_config["layers_sharing"]
 
-        self.graph_degree = graph_config["graph_degree"]
-        self.graph_seed = graph_config["graph_seed"]
+        graph_package = importlib.import_module(node_config["graph_package"])
+        self.graph_class = getattr(graph_package, node_config["graph_class"])
+
+        self.graph_degree = node_config["graph_degree"]
+        self.graph_seed = node_config["graph_seed"]
         self.graph = self.graph_class(self.n_procs, self.graph_degree, self.graph_seed)  # type: Graph
 
     def get_neighbors(self, node=None):
+        self.get_new_graph()
         return self.graph.neighbors(self.uid)
 
-    def get_new_graph(self, iteration):
+    def get_new_graph(self):
         """
         Get the new graph for the current iteration
 
@@ -227,99 +228,8 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
         self.graph = self.graph_class(
             self.n_procs,
             self.graph_degree,
-            seed=self.graph_seed * 100000 + iteration,
+            seed=self.graph_seed * 100000 + self.iteration,
         )
-
-    def run(self):
-        """
-        Start the decentralized learning
-
-        """
-        self.testset = self.dataset.get_testset()
-        rounds_to_test = self.test_after
-        rounds_to_train_evaluate = self.train_evaluate_after
-
-        for iteration in range(self.iterations):
-            logging.info("Starting training iteration: %d", iteration)
-            rounds_to_train_evaluate -= 1
-            rounds_to_test -= 1
-            self.iteration = iteration
-
-            # best model choice in done in trainer
-            treshold_explo = np.exp(-iteration * 3 / self.iterations)
-            self.trainer.train(self.dataset, treshold_explo)
-
-            # logging and plotting
-            results_dict = self.get_results_dict(iteration=iteration)
-            results_dict = self.log_metadata(results_dict, iteration)
-
-            if rounds_to_train_evaluate == 0:
-                logging.info("Evaluating on train set.")
-                rounds_to_train_evaluate = self.train_evaluate_after
-                results_dict = self.log_best_model_train_loss(results_dict, iteration)
-
-            if rounds_to_test == 0:
-                rounds_to_test = self.test_after
-
-                if self.dataset.__testing__:
-                    logging.info("evaluating on test set.")
-                    results_dict = self.eval_on_testset(results_dict, iteration)
-
-                if self.dataset.__validating__:
-                    logging.info("evaluating on validation set.")
-                    results_dict = self.eval_on_validationset(results_dict, iteration)
-
-            self.write_results_dict(results_dict)
-
-            # sharing
-            self.get_new_graph(iteration)
-            self.my_neighbors = self.get_neighbors()
-            self.connect_neighbors()
-            logging.debug("Connected to all neighbors")
-
-            to_send = self.get_data_to_send()
-            to_send["CHANNEL"] = "DPSGD"
-
-            for neighbor in self.my_neighbors:
-                self.communication.send(neighbor, to_send)
-
-            while not self.received_from_all():
-                sender, data = self.receive_DPSGD()
-                logging.debug(
-                    "Received Model from {} of iteration {}".format(
-                        sender, data["iteration"]
-                    )
-                )
-                if sender not in self.peer_deques:
-                    self.peer_deques[sender] = deque()
-
-                if data["iteration"] == iteration:
-                    self.peer_deques[sender].appendleft(data)
-                else:
-                    self.peer_deques[sender].append(data)
-
-            averaging_deque = dict()
-            for neighbor in self.my_neighbors:
-                averaging_deque[neighbor] = self.peer_deques[neighbor]
-
-            self.sharing._averaging(averaging_deque)
-
-        # Done with all iterations
-        final_best_model_idx = results_dict["test_best_model_idx"][self.iterations]
-        final_best_model = self.models[final_best_model_idx]
-        if final_best_model.shared_parameters_counter is not None:
-            logging.info("Saving the shared parameter counts")
-            with open(
-                os.path.join(
-                    self.log_dir, "{}_shared_parameters.json".format(self.rank)
-                ),
-                "w",
-            ) as of:
-                json.dump(self.model.shared_parameters_counter.numpy().tolist(), of)
-        self.disconnect_neighbors()
-        logging.info("Storing final weight")
-        final_best_model.dump_weights(self.weights_store_dir, self.uid, iteration)
-        logging.info("All neighbors disconnected. Process complete!")
 
     def get_data_to_send(self) -> Dict:
         """Gets the data to send to neighbors.
@@ -329,9 +239,9 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
             Dict: Data to send to neighbors
         """
         if self.sharing_class == CurrentModelSharing:
-            to_send = self.sharing.get_data_to_send(
-                self.trainer.current_model_idx, len(self.my_neighbors)
-            )
+            # send only one model
+            to_send = self.sharing.get_data_to_send(self.trainer.current_model_idx, len(self.my_neighbors))
         else:
+            # send all model like in the non-Peer Sampler case
             to_send = self.sharing.get_data_to_send(len(self.my_neighbors))
         return to_send

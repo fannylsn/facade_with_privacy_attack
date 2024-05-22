@@ -3,7 +3,6 @@ import logging
 import pickle
 import socket
 from collections import deque
-from time import sleep
 
 import zmq
 
@@ -86,10 +85,13 @@ class TCP(Communication):
         self.uid = mapping.get_uid(rank, machine_id)
         self.identity = str(self.uid).encode()
         self.context = zmq.Context()
+        self.context.set(zmq.MAX_SOCKETS, 1000000)
         self.router = self.context.socket(zmq.ROUTER)
         self.router.setsockopt(zmq.IDENTITY, self.identity)
         self.router.setsockopt(zmq.RCVTIMEO, self.recv_timeout)
         self.router.setsockopt(zmq.ROUTER_MANDATORY, 1)
+        self.router.setsockopt(zmq.SNDHWM, 0)
+        self.router.setsockopt(zmq.RCVHWM, 0)
         self.router.bind(self.addr(rank, machine_id))
 
         self.total_data = 0
@@ -97,8 +99,6 @@ class TCP(Communication):
 
         self.peer_deque = deque()
         self.peer_sockets = dict()
-
-        # sleep(2) # Sleep for socket creation everywhere
 
     def __del__(self):
         """
@@ -165,6 +165,8 @@ class TCP(Communication):
         id = str(neighbor).encode()
         req = self.context.socket(zmq.DEALER)
         req.setsockopt(zmq.IDENTITY, self.identity)
+        req.setsockopt(zmq.SNDHWM, 0)
+        req.setsockopt(zmq.RCVHWM, 0)
         req.connect(self.addr(*self.mapping.get_machine_and_rank(neighbor)))
         self.peer_sockets[id] = req
 
@@ -219,7 +221,6 @@ class TCP(Communication):
             Message as a Python dictionary
 
         """
-
         if encrypt:
             to_send = self.encrypt(data)
         else:

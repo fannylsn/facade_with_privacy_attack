@@ -45,15 +45,16 @@ if __name__ == "__main__":
     n_machines = args.machines
     procs_per_machine = args.procs_per_machine[0]
     # with peer sampler, this initial graph is never used (exept to get the number of nodes)
-    g = Regular(n_machines * procs_per_machine, my_config["NODE"]["graph_degree"])
+
+    g = Regular(
+        n_machines * procs_per_machine, my_config["NODE"]["graph_degree"], seed=my_config["DATASET"]["random_seed"]
+    )
     m_id = args.machine_id
 
     sm = args.server_machine
     sr = args.server_rank
 
-    l_mapping = Linear(
-        n_machines, procs_per_machine, global_service_machine=sm, current_machine=m_id
-    )
+    l_mapping = Linear(n_machines, procs_per_machine, global_service_machine=sm, current_machine=m_id)
 
     processes = []
     if sm == m_id:

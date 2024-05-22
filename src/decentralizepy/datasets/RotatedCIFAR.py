@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 import torchvision
 from torch import nn
@@ -24,7 +26,7 @@ CLASSES = {
 
 class RotatedCIFAR(RotatedDataset):
     """
-    Class for the Rotated MNIST dataset
+    Class for the Rotated CIFAR dataset
     """
 
     def __init__(
@@ -147,3 +149,128 @@ class ConvNet(Model):
         x = self.fc3(x)
 
         return x
+
+    def get_shared_layers(self):
+        """Here define which layers are shared.
+
+        Returns:
+            List[torch.Tensor]: List of shared layer weights.
+        """
+        with torch.no_grad():
+            return [self.conv1.weight.data.clone(), self.conv2.weight.data.clone()]
+
+    def set_shared_layers(self, shared_layers: List[nn.Module]):
+        """Set the shared layers.
+
+        Args:
+            shared_layers (List[torch.Tensor]): List of shared layer weights.
+        """
+        self.conv1.weight.data = shared_layers[0]
+        self.conv2.weight.data = shared_layers[1]
+
+
+class LeNet(Model):
+    """
+    Class for a LeNet Model for CIFAR10
+    Inspired by original LeNet network for MNIST: https://ieeexplore.ieee.org/abstract/document/726791
+
+    """
+
+    def __init__(self):
+        """
+        Constructor. Instantiates the CNN Model
+            with 10 output classes
+
+        """
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 32, 5, padding="same")
+        self.pool = nn.MaxPool2d(2, 2)
+        self.gn1 = nn.GroupNorm(2, 32)
+        self.conv2 = nn.Conv2d(32, 32, 5, padding="same")
+        self.gn2 = nn.GroupNorm(2, 32)
+        self.conv3 = nn.Conv2d(32, 64, 5, padding="same")
+        self.gn3 = nn.GroupNorm(2, 64)
+        self.fc1 = nn.Linear(64 * 4 * 4, NUM_CLASSES)
+
+    def forward(self, x):
+        """
+        Forward pass of the model
+
+        Parameters
+        ----------
+        x : torch.tensor
+            The input torch tensor
+
+        Returns
+        -------
+        torch.tensor
+            The output torch tensor
+
+        """
+        x = self.pool(F.relu(self.gn1(self.conv1(x))))
+        x = self.pool(F.relu(self.gn2(self.conv2(x))))
+        x = self.pool(F.relu(self.gn3(self.conv3(x))))
+        x = torch.flatten(x, 1)
+        x = self.fc1(x)
+        return x
+
+    def get_shared_layers(self):
+        raise NotImplementedError
+
+    def set_shared_layers(self, shared_layers):
+        raise NotImplementedError
+
+
+class LeNetSplit(Model):
+    """
+    Class for a LeNet Model for CIFAR10
+    Inspired by original LeNet network for MNIST: https://ieeexplore.ieee.org/abstract/document/726791
+
+    """
+
+    HEAD_PARAM = ["classifier"]
+
+    def __init__(self):
+        """
+        Constructor. Instantiates the CNN Model
+            with 10 output classes
+
+        """
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 32, 5, padding="same")
+        self.pool = nn.MaxPool2d(2, 2)
+        self.gn1 = nn.GroupNorm(2, 32)
+        self.conv2 = nn.Conv2d(32, 32, 5, padding="same")
+        self.gn2 = nn.GroupNorm(2, 32)
+        self.conv3 = nn.Conv2d(32, 64, 5, padding="same")
+        self.gn3 = nn.GroupNorm(2, 64)
+        self.classifier = nn.Sequential(nn.Linear(64 * 4 * 4, NUM_CLASSES))
+
+    def forward(self, x):
+        """
+        Forward pass of the model
+
+        Parameters
+        ----------
+        x : torch.tensor
+            The input torch tensor
+
+        Returns
+        -------
+        torch.tensor
+            The output torch tensor
+
+        """
+        x = self.pool(F.relu(self.gn1(self.conv1(x))))
+        x = self.pool(F.relu(self.gn2(self.conv2(x))))
+        x = self.pool(F.relu(self.gn3(self.conv3(x))))
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
+        return x
+
+    def key_in_head(self, key):
+        isin = False
+        for ky in self.HEAD_PARAM:
+            if ky in key:
+                isin = True
+        return isin

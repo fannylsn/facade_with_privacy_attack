@@ -94,9 +94,7 @@ class RotatedMNIST(RotatedDataset):
 
     def get_dataset_object(self, train: bool = True) -> torch.utils.data.Dataset:
         """Get the dataset object from torchvision or the filesystem."""
-        dataset = torchvision.datasets.MNIST(
-            root=self.train_dir, train=train, download=True, transform=self.transform
-        )
+        dataset = torchvision.datasets.MNIST(root=self.train_dir, train=train, download=True, transform=self.transform)
         return dataset
 
 
@@ -131,7 +129,7 @@ class ConvNet(Model):
         return x
 
 
-class ConvNetFromIFCA(Model):
+class FFNet(Model):
     """Same model as in the IFCA paper. suposed to achieve 95.05% accuracy on MNIST."""
 
     def __init__(self, h1=200):
@@ -143,4 +141,74 @@ class ConvNetFromIFCA(Model):
         x = x.view(-1, 28 * 28)
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
-        return F.log_softmax(x, dim=1)
+        return x  # F.log_softmax(x, dim=1)
+
+
+class FFNetSplit(Model):
+    """Same model as in the IFCA paper. suposed to achieve 95.05% accuracy on MNIST."""
+
+    HEAD_PARAM = ["fc2"]
+
+    def __init__(self, h1=200):
+        super().__init__()
+        self.fc1 = torch.nn.Linear(28 * 28, h1)
+        self.fc2 = torch.nn.Linear(h1, 10)
+
+    def forward(self, x):
+        x = x.view(-1, 28 * 28)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x  # F.log_softmax(x, dim=1)
+
+    def key_in_head(self, key):
+        isin = False
+        for ky in self.HEAD_PARAM:
+            if ky in key:
+                isin = True
+        return isin
+
+
+class LeNet(Model):
+    """
+    Class for a LeNet Model for CIFAR10
+    Inspired by original LeNet network for MNIST: https://ieeexplore.ieee.org/abstract/document/726791
+
+    """
+
+    def __init__(self):
+        """
+        Constructor. Instantiates the CNN Model
+            with 10 output classes
+
+        """
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 32, 5, padding="same")
+        self.pool = nn.MaxPool2d(2, 2)
+        self.gn1 = nn.GroupNorm(2, 32)
+        self.conv2 = nn.Conv2d(32, 32, 5, padding="same")
+        self.gn2 = nn.GroupNorm(2, 32)
+        self.conv3 = nn.Conv2d(32, 64, 5, padding="same")
+        self.gn3 = nn.GroupNorm(2, 64)
+        self.fc1 = nn.Linear(64 * 4 * 4, NUM_CLASSES)
+
+    def forward(self, x):
+        """
+        Forward pass of the model
+
+        Parameters
+        ----------
+        x : torch.tensor
+            The input torch tensor
+
+        Returns
+        -------
+        torch.tensor
+            The output torch tensor
+
+        """
+        x = self.pool(F.relu(self.gn1(self.conv1(x))))
+        x = self.pool(F.relu(self.gn2(self.conv2(x))))
+        x = self.pool(F.relu(self.gn3(self.conv3(x))))
+        x = torch.flatten(x, 1)
+        x = self.fc1(x)
+        return x

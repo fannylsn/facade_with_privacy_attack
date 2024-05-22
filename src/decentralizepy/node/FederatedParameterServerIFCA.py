@@ -1,3 +1,4 @@
+import copy
 import importlib
 import json
 import logging
@@ -5,7 +6,6 @@ import math
 import os
 import random
 from collections import deque
-from pathlib import Path
 from typing import List  # noqa: F401
 
 import numpy as np
@@ -83,6 +83,11 @@ class FederatedParameterServerIFCA(Node):
             Other arguments
 
         """
+        # for early restarts
+        self.return_dict = None
+        if len(args) > 0:
+            self.return_dict = args[0]
+
         graph = None
         super().__init__(
             rank,
@@ -297,16 +302,12 @@ class FederatedParameterServerIFCA(Node):
 
         """
         dataset_module = importlib.import_module(dataset_configs["dataset_package"])
-        random_seed = (
-            dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
-        )
+        random_seed = dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
         torch.manual_seed(random_seed)
         np.random.seed(random_seed)
         # main seed, all nodes will receive those models
         self.model_class = getattr(dataset_module, dataset_configs["model_class"])
-        self.models = [
-            self.model_class() for _ in range(dataset_configs["number_of_clusters"])
-        ]  # type: List[Model]
+        self.models = [self.model_class() for _ in range(dataset_configs["number_of_clusters"])]  # type: List[Model]
 
     def init_sharing(self, sharing_configs):
         """
@@ -320,9 +321,7 @@ class FederatedParameterServerIFCA(Node):
         """
         sharing_package = importlib.import_module(sharing_configs["sharing_package"])
         self.sharing_class = getattr(sharing_package, sharing_configs["sharing_class"])
-        sharing_params = utils.remove_keys(
-            sharing_configs, ["sharing_package", "sharing_class"]
-        )
+        sharing_params = utils.remove_keys(sharing_configs, ["sharing_package", "sharing_class"])
         self.sharing = self.sharing_class(
             self.rank,
             self.machine_id,
@@ -366,9 +365,7 @@ class FederatedParameterServerIFCA(Node):
             logging.info("Disconnecting neighbors")
 
             for neighbor in self.my_neighbors:
-                self.communication.send(
-                    neighbor, {"BYE": self.uid, "CHANNEL": "WORKER_REQUEST"}
-                )
+                self.communication.send(neighbor, {"BYE": self.uid, "CHANNEL": "WORKER_REQUEST"})
                 self.barrier.remove(neighbor)
 
             self.sent_disconnections = True
@@ -430,18 +427,27 @@ class FederatedParameterServerIFCA(Node):
             results_dict = self.log_metadata(results_dict, iteration)
             self.write_results_dict(results_dict)
 
+            # check for early restart
+            if self.return_dict is not None:
+                with torch.no_grad():
+                    if iteration != 0:
+                        # check if some model is static -> means he will never be train again
+                        for prev, curr in zip(self.prev_models, self.models):
+                            static = True
+                            for p1, p2 in zip(prev.parameters(), curr.parameters()):
+                                if p1.data.ne(p2.data).sum() > 0:
+                                    static = False
+                                    break
+                            if static:
+                                self.return_dict["early_stop"] = True
+                                self.disconect_early_restart()
+                                return
+                    self.prev_models = [copy.deepcopy(model) for model in self.models]
+
         self.disconnect_neighbors()
         logging.info("Storing final weight of each model")
         for i, model in enumerate(self.models):
-            folder_path = Path(
-                os.path.join(self.weights_store_dir, f"model_{i}_weights")
-            )
-            os.makedirs(os.path.dirname(folder_path), exist_ok=True)
-            model.dump_weights(
-                folder_path,
-                self.uid,
-                iteration,
-            )
+            model.dump_weights(self.weights_store_dir, i, iteration)
         logging.info("All neighbors disconnected. Process complete!")
 
     def get_results_dict(self, iteration):
@@ -472,9 +478,7 @@ class FederatedParameterServerIFCA(Node):
         if hasattr(self.communication, "total_meta"):
             results_dict["total_meta"][iteration + 1] = self.communication.total_meta
         if hasattr(self.communication, "total_data"):
-            results_dict["total_data_per_n"][iteration + 1] = (
-                self.communication.total_data
-            )
+            results_dict["total_data_per_n"][iteration + 1] = self.communication.total_data
         return results_dict
 
     def write_results_dict(self, results_dict):
@@ -483,7 +487,15 @@ class FederatedParameterServerIFCA(Node):
         Args:
             results_dict (_type_): _description_
         """
-        with open(
-            os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w"
-        ) as of:
+        with open(os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w") as of:
             json.dump(results_dict, of)
+
+    def disconect_early_restart(self):
+        """Early restart the process."""
+        logging.info("Early restart: Disconnecting neighbors")
+        if not self.sent_disconnections:
+            for neighbor in self.my_neighbors:
+                self.communication.send(neighbor, {"RESTART": self.uid, "CHANNEL": "WORKER_REQUEST"})
+                self.barrier.remove(neighbor)
+
+            self.sent_disconnections = True
