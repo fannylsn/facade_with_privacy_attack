@@ -3,7 +3,6 @@ import os
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Dict
 
 import numpy as np
 import pandas as pd
@@ -11,28 +10,110 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 sys.path.append("/eval/")
+# Define a custom color cycle
+from cycler import cycler
 from plotIDCA import (
-    CIFAR_CLASSES,
     compute_rates,
     get_per_cluster_stats,
+    per_class_equalized_odds,
+    plot_fair_accuracy,
+    plot_per_class_demographic_parity,
 )
+
+custom_cycler = cycler(
+    color=[
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
+        "#bcbd22",
+        "#17becf",
+        "#aec7e8",
+        "#ffbb78",
+        "#98df8a",
+        "#ff9896",
+        "#c5b0d5",
+        "#c49c94",
+        "#f7b6d2",
+        "#c7c7c7",
+        "#dbdb8d",
+        "#9edae5",
+        "#393b79",
+        "#5254a3",
+        "#6b6ecf",
+        "#9c9ede",
+    ]
+)
+
+# Apply the custom color cycle globally
+plt.rc("axes", prop_cycle=custom_cycler)
 
 CONFIGS = ["IFCA", "DPSGD", "IDCA", "DEPRL_V1", "DEPRL_V2", "DAC"]
 # CONFIGS = ["IFCA_NO_GRAD", "IFCA", "IDCA_DEG_3", "IDCA_DEG_4", "IDCA_FC"]
 # CONFIGS = ["B_8_r_5", "B_8_r_7", "B_8_r_10", "B_16_r_5", "B_16_r_7", "B_16_r_10", "B_32_r_5", "B_32_r_7", "B_32_r_10"]
 # CONFIGS = ["no_lr", "lr"]
 CONFIGS = [
+    "lr_0.3",
     "lr_0.1",
-    "lr_0.05",
+    "lr_0.03",
     "lr_0.01",
-    "lr_0.005",
+    "lr_0.003",
     "lr_0.001",
-    "lr_0.0005",
+    "lr_0.0003",
 ]
 # CONFIGS = ["wd_0.1", "wd_0.01", "wd_0.001", "wd_0.0001", "lr_0.001"]
 # CONFIGS = ["f2lay", "all_conv_wd", "all_conv"]
 # CONFIGS = ["1_clust", "2_clust", "3_clust"]
-CONFIGS = ["val", "train"]
+# CONFIGS = ["classique", "equ_odds", "demo_parity", "loss_diff"]
+# CONFIGS = [
+#     "lam_30",
+#     "lam_10",
+#     "lam_3",
+#     "lam_1",
+#     "lam_0.3",
+#     "lam_0.1",
+#     "lam_0.03",
+#     "lam_0.01",
+#     "lam_0.0001",
+#     "lam_0.001",
+#     "classique",
+# ]
+# CONFIGS = ["classique", "explo_50", "explo_33", "explo_20"]
+# CONFIGS = [
+#     "classique",
+#     "explo_step_50_freeze",
+#     "explo_step_33_freeze_66",
+#     "explo_step_33_freeze",
+#     "explo_step_50",
+#     "explo_step_33",
+# ]
+# CONFIGS = ["classique_old", "classique", "sharing", "other"]
+CONFIGS = ["FACADE", "EL", "other", "sharing", "lam_0.0"]
+# CONFIGS = [
+#     "classique",
+#     "lr_0.003_lam_10",
+#     "lr_0.003_lam_1",
+#     "lr_0.003_lam_0.3",
+#     "lr_0.003_lam_3",
+#     "lr_0.001_lam_10",
+#     "lr_0.001_lam_1",
+#     "lr_0.001_lam_0.3",
+#     "lr_0.001_lam_3",
+#     "lr_0.0001_lam_10",
+#     "lr_0.0001_lam_1",
+#     "lr_0.0001_lam_0.3",
+#     "lr_0.0001_lam_3",
+# ]
+
+# CONFIGS = ["classique", "sharing", "feat"]
+
+# CONFIGS = ["2024"]
+
+# CONFIGS = ["1mod", "2mod", "3mod", "4mod", "5mod", "dpsgd"]
 
 
 def get_stats(data):
@@ -59,8 +140,12 @@ def plot(means, stdevs, mins, maxs, title, label, loc, xlabel="communication rou
     y_axis = np.array(list(means.values()))
     err = np.array(list(stdevs.values()))
     plt.plot(x_axis, y_axis, label=label)
+    plt.yticks(np.arange(0, 81, 20))
+    plt.ylim(0, 81)
+    plt.grid(True, color="gray", linestyle="-", linewidth=0.5)
     plt.fill_between(x_axis, y_axis - err, y_axis + err, alpha=0.4)
     plt.legend(loc=loc)
+    plt.tight_layout()
 
 
 def per_cluster_plot(final_data, title, loc, xlabel="communication rounds", exp="none"):
@@ -73,7 +158,7 @@ def per_cluster_plot(final_data, title, loc, xlabel="communication rounds", exp=
         plt.fill_between(x_axis, y_axis - err, y_axis + err, alpha=0.4)
     plt.xlabel(xlabel)
     plt.title(title)
-    plt.legend(loc=loc)
+    plt.legend(loc=loc, ncols=2)
 
 
 def replace_dict_key(d_org: dict, d_other: dict):
@@ -144,6 +229,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         # Plot Training loss
         plt.figure(20)
         means, stdevs, mins, maxs = get_stats([x["train_loss"] for x in results])
+        plt.ylim(0, 2)
         plot(means, stdevs, mins, maxs, "Training Loss", config, "lower right")
 
         # handle the last artificial iteration for all reduce
@@ -166,6 +252,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
         plt.figure(111)
         final_data = get_per_cluster_stats(results, metric="train_loss")
+        plt.ylim(0, 2)
         per_cluster_plot(final_data, "Training Loss per cluster", "lower right", exp=config)
         plt.savefig(os.path.join(folder_path, "train_loss_clust.png"), dpi=300)
 
@@ -188,16 +275,16 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         # Plot Testing loss
         plt.figure(21)
         means, stdevs, mins, maxs = get_stats([x["test_loss"] for x in results])
-        plot(means, stdevs, mins, maxs, "Testing Loss", config, "lower right")
+        plot(means, stdevs, mins, maxs, "Testing Loss", config, "upper right")
         df = pd.DataFrame(
             {
                 "mean": list(means.values()),
                 "std": list(stdevs.values()),
                 "nr_nodes": [len(results)] * len(means),
-                "total_bytes": correct_bytes,
+                # "total_bytes": correct_bytes,
             },
             list(means.keys()),
-            columns=["mean", "std", "nr_nodes", "total_bytes"],
+            columns=["mean", "std", "nr_nodes"],  # "total_bytes"],
         )
         plt.savefig(os.path.join(folder_path, "test_loss.png"), dpi=300)
 
@@ -231,10 +318,10 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
                 "mean": list(means.values()),
                 "std": list(stdevs.values()),
                 "nr_nodes": [len(results)] * len(means),
-                "total_bytes": correct_bytes,
+                # "total_bytes": correct_bytes,
             },
             list(means.keys()),
-            columns=["mean", "std", "nr_nodes", "total_bytes"],
+            columns=["mean", "std", "nr_nodes"],  # "total_bytes"],
         )
         plt.savefig(os.path.join(folder_path, "test_acc.png"), dpi=300)
 
@@ -242,6 +329,27 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         final_data = get_per_cluster_stats(results, metric="test_acc")
         per_cluster_plot(final_data, "Testing accuracy per cluster", "lower right", exp=config)
         plt.savefig(os.path.join(folder_path, "test_acc_clust.png"), dpi=300)
+
+        plt.figure(224)
+        fair_acc = plot_fair_accuracy(final_data, folder_path, label=config)
+
+        dict_ = {}
+        columns = []
+        dict_["fair_acc"] = list(fair_acc.values())
+        columns.append("fair_acc")
+        for clust, data in final_data.items():
+            columns.extend([f"mean_{clust}", f"std_{clust}"])
+            dict_[f"mean_{clust}"] = list(data[0].values())
+            dict_[f"std_{clust}"] = list(data[1].values())
+        dict_["nr_nodes"] = ([len(results)] * len(means),)
+        columns.append("nr_nodes")
+
+        df = pd.DataFrame(
+            dict_,
+            list(means.keys()),
+            columns=columns,  # "total_bytes"],
+        )
+        df.to_csv(os.path.join(subdir_path, "test_acc_clut.csv"), index_label="rounds")
 
         plt.figure(13)
         means = replace_dict_key(means, b_means)
@@ -257,6 +365,45 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         )
         df.to_csv(os.path.join(subdir_path, "test_acc.csv"), index_label="rounds")
         plt.savefig(os.path.join(folder_path, "bytes_test_acc.png"), dpi=300)
+
+        # plot validation
+        # Plot Testing Accuracy
+        plt.figure(2200)
+        means, stdevs, mins, maxs = get_stats([x["validation_acc"] for x in results])
+        plot(means, stdevs, mins, maxs, "Validation Accuracy", config, "lower right")
+        df = pd.DataFrame(
+            {
+                "mean": list(means.values()),
+                "std": list(stdevs.values()),
+                "nr_nodes": [len(results)] * len(means),
+                # "total_bytes": correct_bytes,
+            },
+            list(means.keys()),
+            columns=["mean", "std", "nr_nodes"],  # "total_bytes"],
+        )
+        plt.savefig(os.path.join(folder_path, "val_acc.png"), dpi=300)
+
+        # per cluster
+        plt.figure(2201)
+        final_data = get_per_cluster_stats(results, metric="validation_acc")
+        per_cluster_plot(final_data, "Validation accuracy per cluster", "lower right", exp=config)
+        plt.savefig(os.path.join(folder_path, "val_acc_clust.png"), dpi=300)
+
+        dict_ = {}
+        columns = []
+        for clust, data in final_data.items():
+            columns.extend([f"mean_{clust}", f"std_{clust}"])
+            dict_[f"mean_{clust}"] = list(data[0].values())
+            dict_[f"std_{clust}"] = list(data[1].values())
+        dict_["nr_nodes"] = ([len(results)] * len(means),)
+        columns.append("nr_nodes")
+
+        df = pd.DataFrame(
+            dict_,
+            list(means.keys()),
+            columns=columns,  # "total_bytes"],
+        )
+        df.to_csv(os.path.join(subdir_path, "val_acc_clut.csv"), index_label="rounds")
 
         # Collect total_bytes shared
         bytes_list = []
@@ -327,6 +474,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
         # Plotting cluster-model attribution
         if "test_best_model_idx" in results[0].keys():
+            # print(set(results[0]["test_best_model_idx"].values()))
             plt.figure(30)
             plot_final_cluster_model_attribution(subdir_path, results)
 
@@ -339,13 +487,16 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         # faireness
         if "per_sample_pred_test" in results[0].keys() and results[0]["per_sample_pred_test"]:
             for res in results:
-                res["per_sample_pred_test"] = {k: json.loads(v) for k, v in res["per_sample_pred_test"].items()}
+                first_key = list(res["per_sample_pred_test"].keys())[0]
+                if not isinstance(res["per_sample_pred_test"][first_key], list):
+                    res["per_sample_pred_test"] = {k: json.loads(v) for k, v in res["per_sample_pred_test"].items()}
                 res["per_sample_true_test"] = {k: json.loads(v) for k, v in res["per_sample_true_test"].items()}
             per_class_rates, per_cluster_rates = compute_rates(results)
-            plt.figure(40)
-            plot_per_class_demographic_parity(per_class_rates, folder_path, config)
-            plt.figure(41)
-            plot_per_class_equal_opportunities(per_class_rates, folder_path, config)
+            if len(per_class_rates) > 1:
+                plt.figure(40)
+                plot_per_class_demographic_parity(per_class_rates, folder_path, config)
+                plt.figure(41)
+                per_class_equalized_odds(per_class_rates, folder_path, config)
 
 
 def plot_cluster_model_evolution(folder_path, results):
@@ -354,8 +505,12 @@ def plot_cluster_model_evolution(folder_path, results):
     models = set([x[2] for x in data])
     max_iter = max([el[1] for el in data])
     space_iter = data[1][1] - data[0][1]
+    if space_iter == 0:
+        space_iter = 1
     init_iter = data[0][1]
     fig, axs = plt.subplots(len(clusters), 1)
+    if not isinstance(axs, np.ndarray):
+        axs = np.array([axs])
     fig.suptitle("Number of node in each cluster picking each model")
     for i, cluster in enumerate(clusters):
         cluster_data = [x for x in data if x[0] == cluster]
@@ -416,57 +571,6 @@ def plot_cluster_variation(folder_path, results):
     plt.ylabel("Sum of all variations")
     plt.savefig(os.path.join(folder_path, "cluster_variation.png"), dpi=300)
     plt.close()
-
-
-def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]], folder_path, config):
-    """Compute and plot the demographic parity with S the sensitive attribute beeing the cluster belonging of each node.
-        TP + FP / all preds
-    Args:
-        per_class_rates (Dict): _description_
-        folder_path (_type_): _description_
-    """
-    clusters = list(per_class_rates.keys())
-    pos_preds_0 = per_class_rates[clusters[0]]["TP"] + per_class_rates[clusters[0]]["FP"]
-    tot_0 = np.sum([per_class_rates[clusters[0]][k] for k in per_class_rates[clusters[0]].keys()], axis=0)
-    pos_preds_1 = per_class_rates[clusters[1]]["TP"] + per_class_rates[clusters[1]]["FP"]
-    tot_1 = np.sum([per_class_rates[clusters[1]][k] for k in per_class_rates[clusters[1]].keys()], axis=0)
-
-    demo_parity = abs(pos_preds_0 / tot_0 - pos_preds_1 / tot_1)
-
-    plt.plot(demo_parity, "o", label=config)
-    plt.title("Per class demographic parity")
-    plt.ylabel("Absolute difference in accuracy")
-    plt.xlabel("Classes")
-    plt.legend(loc="upper right")
-    plt.xticks(range(len(demo_parity)), [CIFAR_CLASSES[i] for i in range(len(demo_parity))], rotation=45)
-    plt.savefig(os.path.join(folder_path, "demographic_parity.png"), dpi=300)
-
-
-def plot_per_class_equal_opportunities(per_class_rates: Dict[int, Dict[str, int]], folder_path, config):
-    """Compute and plot the equal opportunities with S the sensitive attribute beeing the cluster belonging of each node.
-    Requires that each group has the same recall.
-    TP / (TP + FN) (per cluster true positive rate == recall)
-    Args:
-        per_class_rates (Dict): _description_
-        folder_path (_type_): _description_
-    """
-    clusters = list(per_class_rates.keys())
-    rec_0 = per_class_rates[clusters[0]]["TP"] / (
-        per_class_rates[clusters[0]]["TP"] + per_class_rates[clusters[0]]["FN"]
-    )
-    rec_1 = per_class_rates[clusters[1]]["TP"] / (
-        per_class_rates[clusters[1]]["TP"] + per_class_rates[clusters[1]]["FN"]
-    )
-
-    eq_op = abs(rec_0 - rec_1)
-
-    plt.plot(eq_op, "o", label=config)
-    plt.title("Per class equal opportunities")
-    plt.ylabel("Absolute difference in recall")
-    plt.xlabel("Classes")
-    plt.legend(loc="upper right")
-    plt.xticks(range(len(eq_op)), [CIFAR_CLASSES[i] for i in range(len(eq_op))], rotation=45)
-    plt.savefig(os.path.join(folder_path, "equal_opportunities.png"), dpi=300)
 
 
 def plot_parameters(path):

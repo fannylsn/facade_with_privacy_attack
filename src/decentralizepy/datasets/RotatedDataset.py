@@ -24,8 +24,11 @@ class RotatedDataset(DatasetClustered):
         if self.number_of_clusters == 1:
             return torchvision.transforms.RandomRotation(degrees=[0, 0])
         elif self.number_of_clusters == 2:
-            return torchvision.transforms.RandomRotation(degrees=[180 * self.cluster, 180 * self.cluster])
-        elif self.number_of_clusters == 4:
+            rotation = 180 * self.cluster
+            # rotation = 180 * (1 - self.cluster)
+            logging.info(f"Cluster {self.cluster} applying rotation: {rotation}")
+            return torchvision.transforms.RandomRotation(degrees=[rotation, rotation])
+        elif self.number_of_clusters == 3 or self.number_of_clusters == 4:
             return torchvision.transforms.RandomRotation(degrees=[90 * self.cluster, 90 * self.cluster])
         else:
             raise ValueError("Rotation transform not implemented for {} clusters".format(self.number_of_clusters))
@@ -54,6 +57,7 @@ class RotatedDataset(DatasetClustered):
                 [self.validation_size, 1 - self.validation_size],
                 torch.Generator().manual_seed(self.random_seed),
             )
+            logging.info(f"The validation set has {len(self.validationset)} samples.")
 
         c_len = len(trainset)
 
@@ -67,9 +71,19 @@ class RotatedDataset(DatasetClustered):
                 self.sizes[i][-1] += 1.0 - frac * node_in_cluster_i
             logging.debug("Size fractions: {}".format(self.sizes))
 
-        self.data_partitioner = DataPartitioner(
+        cluster_sizes = [sum(sizes) for sizes in self.sizes]
+        self.cluster_data_partitioner = DataPartitioner(
             trainset,
-            sizes=self.sizes[self.cluster],
+            sizes=cluster_sizes,
+            seed=self.random_seed,
+        )
+        cluster_data = self.cluster_data_partitioner.use(self.cluster)
+
+        cluster_fraction = sum(self.sizes[self.cluster])
+        data_sizes = [sizes / cluster_fraction for sizes in self.sizes[self.cluster]]
+        self.data_partitioner = DataPartitioner(
+            cluster_data,
+            sizes=data_sizes,
             seed=self.random_seed,
         )
 
@@ -93,6 +107,8 @@ class RotatedDataset(DatasetClustered):
                 [self.validation_size, 1 - self.validation_size],
                 torch.Generator().manual_seed(self.random_seed),
             )
+            logging.info(f"The validation set has {len(self.validationset)} samples.")
+        logging.info(f"The test set has {len(self.testset)} samples.")
 
 
 class NullTransform:

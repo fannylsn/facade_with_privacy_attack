@@ -5,12 +5,12 @@ nfs_decpy=/mnt/nfs/thiba/decentralizepy
 eval_file=$nfs_decpy/eval/testingIDCAwPS.py # decentralized driver code (run on each machine)
 script_path=$nfs_decpy/tutorial/IDCA # Path to the folder where the run_IDCAwPS.sh is located
 
-config_file=config_new_exp_idca.ini
+config_file=configCIFAR_idca.ini
 
 config_file_path=$script_path/configs/$config_file
 
 # m=0 # machine id corresponding consistent with ip.json
-ip_machines=$nfs_decpy/tutorial/IDCA/ip_nfs.json
+ip_machines=$nfs_decpy/tutorial/ip_files/ip_nfs_A.json
 m=$(cat $ip_machines | grep $HOSTNAME | awk '{print $1}' | cut -d'"' -f2)
 echo M is $m
 
@@ -42,15 +42,15 @@ procs_per_machine=8 # =32/4
 iterations=1200
 
 
-prefix_dir=new_exp_idca_configs_$(date '+%Y-%m-%dT%H:%M')
+prefix_dir=exp_weong_models_idca_$(date '+%Y-%m-%dT%H:%M')
 
 echo "All started at $(date '+%Y-%m-%dT%H:%M')!"
 
 #first download dataset
 $env_python $machine_decpy/download_dataset.py
 
-configs=(1 2 3)
-seeds=(1122 3344 5566 7788) # (12 34 56 78)
+configs=(99)
+seeds=(1122) # (12 34 56 78)
 
 
 for config in ${configs[@]}
@@ -65,6 +65,9 @@ do
             ;;
         3)
             $python_bin/crudini --set $run_path/$config_file DATASET sizes "[[1/32]*30,[1/32]*2]"
+            ;;
+        99)
+            $python_bin/crudini --set $run_path/$config_file DATASET sizes "[[1/32]*20,[1/32]*10,[1/32]*2]"
             ;;
     esac
 

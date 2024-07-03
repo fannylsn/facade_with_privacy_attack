@@ -1,3 +1,4 @@
+import logging
 from typing import List
 
 import torch
@@ -43,6 +44,7 @@ class RotatedCIFAR(RotatedDataset):
         validation_source="",
         validation_size="",
         number_of_clusters: int = 1,
+        top_k_acc=1,
     ):
         """
         Constructor which reads the data files, instantiates and partitions the dataset
@@ -88,6 +90,7 @@ class RotatedCIFAR(RotatedDataset):
             validation_source,
             validation_size,
             number_of_clusters,
+            top_k_acc=top_k_acc,
         )
 
         self.num_classes = NUM_CLASSES
@@ -114,73 +117,22 @@ class RotatedCIFAR(RotatedDataset):
         return dataset
 
 
-class ConvNet(Model):
-    """Designed by me.
-    Has 448'638 parameters.
-    """
-
-    def __init__(self):
-        """Initialization of the instance"""
-        super().__init__()
-        self.conv1 = nn.Conv2d(3, 64, 5)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(64, 64, 5)
-        self.fc1 = nn.Linear(64 * 5 * 5, 200)
-        self.fc2 = nn.Linear(200, 100)
-        self.fc3 = nn.Linear(100, 10)
-
-        self.dropout = nn.Dropout(0.5)
-
-    def forward(self, x):
-        """
-        Performs the forward pass.
-
-        Args:
-            x (torch.Tensor): a Nx3x32x32 image tensor
-        """
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 64 * 5 * 5)
-        x = self.dropout(x)
-        x = F.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = F.relu(self.fc2(x))
-        x = self.dropout(x)
-        x = self.fc3(x)
-
-        return x
-
-    def get_shared_layers(self):
-        """Here define which layers are shared.
-
-        Returns:
-            List[torch.Tensor]: List of shared layer weights.
-        """
-        with torch.no_grad():
-            return [self.conv1.weight.data.clone(), self.conv2.weight.data.clone()]
-
-    def set_shared_layers(self, shared_layers: List[nn.Module]):
-        """Set the shared layers.
-
-        Args:
-            shared_layers (List[torch.Tensor]): List of shared layer weights.
-        """
-        self.conv1.weight.data = shared_layers[0]
-        self.conv2.weight.data = shared_layers[1]
-
-
 class LeNet(Model):
     """
-    Class for a LeNet Model for CIFAR10
+    Class for a LeNet Model for CIFAR10 : 121'609 params
     Inspired by original LeNet network for MNIST: https://ieeexplore.ieee.org/abstract/document/726791
 
     """
 
-    def __init__(self):
+    HEAD_LAYERS = ["fc1.weight", "fc1.bias"]
+    current_head = HEAD_LAYERS
+    HEAD_BUFFERS = []
+    current_head_buffers = HEAD_BUFFERS
+
+    def __init__(self, feature_layer_name="conv3"):
         """
         Constructor. Instantiates the CNN Model
             with 10 output classes
-
         """
         super().__init__()
         self.conv1 = nn.Conv2d(3, 32, 5, padding="same")
@@ -191,6 +143,44 @@ class LeNet(Model):
         self.conv3 = nn.Conv2d(32, 64, 5, padding="same")
         self.gn3 = nn.GroupNorm(2, 64)
         self.fc1 = nn.Linear(64 * 4 * 4, NUM_CLASSES)
+
+        # Register hook for feature extraction
+        # self.feature_layer_name = feature_layer_name
+        # self._register_hook()
+        # self.reset_features()
+
+    # def deepcopy(self):
+    #     with torch.no_grad():
+    #         model = copy.deepcopy(self)
+    #         model._register_hook()
+    #         return model
+
+    def deepcopy(self):
+        """not deep carefull"""
+        model_state = self.state_dict().copy()
+        new_model = LeNet()
+        new_model.load_state_dict(model_state)
+        # new_model._register_hook()  # Make sure to re-register the hook
+        return new_model
+
+    # def shallowcopy(self):
+    #     model = self.clone()
+    #     model._register_hook()
+    #     return model
+
+    def _register_hook(self):
+        def hook(module, input, output):
+            self.features = output
+
+        for name, module in self.named_modules():
+            if name == self.feature_layer_name:
+                module.register_forward_hook(hook)
+
+    def get_features(self):
+        return self.features
+
+    def reset_features(self):
+        self.features = None
 
     def forward(self, x):
         """
@@ -214,16 +204,68 @@ class LeNet(Model):
         x = self.fc1(x)
         return x
 
-    def get_shared_layers(self):
-        raise NotImplementedError
+    def get_layers(self):
+        """Get the blocks of the network."""
+        return [self.conv1, self.conv2, self.conv3, self.fc1]
 
-    def set_shared_layers(self, shared_layers):
-        raise NotImplementedError
+    def get_shared_layers(self):
+        """Here define which layers are shared.
+
+        Returns:
+            List[torch.Tensor]: List of shared layer weights.
+        """
+        lays = []
+        with torch.no_grad():
+            for name, buffer in self.named_buffers():
+                if name not in self.current_head_buffers:
+                    lays.append(buffer.detach().clone())
+            for name, param in self.named_parameters():
+                if name not in self.current_head:
+                    lays.append(param.detach().clone())
+        return lays
+
+    def set_shared_layers(self, shared_layers: List[nn.Module]):
+        """Set the shared layers.
+
+        Args:
+            shared_layers (List[torch.Tensor]): List of shared layer weights.
+        """
+        shared_layers = shared_layers.copy()
+        with torch.no_grad():
+            for name, buffer in self.named_buffers():
+                if name not in self.current_head_buffers:
+                    buffer.copy_(shared_layers.pop(0))
+            for name, param in self.named_parameters():
+                if name not in self.current_head:
+                    param.copy_(shared_layers.pop(0))
+        assert len(shared_layers) == 0, "The shared_layers list should be empty after setting."
+
+    def freeze_body(self):
+        """Freeze the body of the network."""
+        logging.debug("Freezing body of the network")
+        for param in self.conv1.parameters():
+            param.requires_grad = False
+        for param in self.conv2.parameters():
+            param.requires_grad = False
+        for param in self.conv3.parameters():
+            param.requires_grad = False
+
+    @classmethod
+    def set_share_all(cls):
+        # logging.info("Setting all layers to be shared")
+        cls.current_head = []
+        cls.current_head_buffers = []
+
+    @classmethod
+    def set_share_core(cls):
+        # logging.info("Setting core layers to be shared")
+        cls.current_head = cls.HEAD_LAYERS
+        cls.current_head_buffers = cls.HEAD_BUFFERS
 
 
 class LeNetSplit(Model):
     """
-    Class for a LeNet Model for CIFAR10
+    Class for a LeNet Model for CIFAR10, used for DEPRL
     Inspired by original LeNet network for MNIST: https://ieeexplore.ieee.org/abstract/document/726791
 
     """
@@ -274,3 +316,66 @@ class LeNetSplit(Model):
             if ky in key:
                 isin = True
         return isin
+
+    def deepcopy(self):
+        """not deep carefull"""
+        model_state = self.state_dict().copy()
+        new_model = LeNetSplit()
+        new_model.load_state_dict(model_state)
+        return new_model
+
+
+class LeNetCore(Model):
+    """
+    Class for a LeNet Model for CIFAR10
+    Inspired by original LeNet network for MNIST: https://ieeexplore.ieee.org/abstract/document/726791
+
+    """
+
+    def __init__(self, feature_layer_name="conv3"):
+        """
+        Constructor. Instantiates the CNN Model
+            with 10 output classes
+
+        """
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 32, 5, padding="same")
+        self.pool = nn.MaxPool2d(2, 2)
+        self.gn1 = nn.GroupNorm(2, 32)
+        self.conv2 = nn.Conv2d(32, 32, 5, padding="same")
+        self.gn2 = nn.GroupNorm(2, 32)
+        self.conv3 = nn.Conv2d(32, 64, 5, padding="same")
+        self.gn3 = nn.GroupNorm(2, 64)
+
+    def forward(self, x):
+        """
+        Forward pass of the model
+
+        Parameters
+        ----------
+        x : torch.tensor
+            The input torch tensor
+
+        Returns
+        -------
+        torch.tensor
+            The output torch tensor
+
+        """
+        x = self.pool(F.relu(self.gn1(self.conv1(x))))
+        x = self.pool(F.relu(self.gn2(self.conv2(x))))
+        x = self.pool(F.relu(self.gn3(self.conv3(x))))
+        x = torch.flatten(x, 1)
+        return x
+
+
+class LeNetSharedCore(nn.Module):
+    def __init__(self, core_model, num_classes):
+        super().__init__()
+        self.core_model = core_model
+        self.head = nn.Linear(64 * 4 * 4, NUM_CLASSES)
+
+    def forward(self, x):
+        x = self.core_model(x)
+        x = self.head(x)
+        return x

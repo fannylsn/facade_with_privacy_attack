@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import random
 from collections import deque
 from typing import Dict, List  # noqa: F401
 
@@ -13,12 +14,14 @@ from matplotlib import pyplot as plt
 from decentralizepy import utils
 from decentralizepy.communication.Communication import Communication  # noqa: F401
 from decentralizepy.datasets.RotatedDataset import RotatedDataset  # noqa: F401
+from decentralizepy.datasets.RotatedFLICKR import RotatedFLICKR
 from decentralizepy.graphs.FullyConnected import FullyConnected
 from decentralizepy.graphs.Graph import Graph
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.models.Model import Model  # noqa: F401
 from decentralizepy.node.Node import Node
 from decentralizepy.sharing.CurrentModelSharing import CurrentModelSharing
+from decentralizepy.sharing.CurrentModelSharingFair import CurrentModelSharingFair
 from decentralizepy.sharing.Sharing import Sharing  # noqa: F401
 from decentralizepy.training.TrainingIDCA import TrainingIDCA  # noqa: F401
 from decentralizepy.utils_learning_rates import get_lr_step_7_9
@@ -290,14 +293,17 @@ class DPSGDNodeIDCA(Node):
             Python dict containing dataset config params
 
         """
-        dataset_module = importlib.import_module(dataset_configs["dataset_package"])
-        self.dataset_class = getattr(dataset_module, dataset_configs["dataset_class"])
+        self.dataset_module = importlib.import_module(dataset_configs["dataset_package"])
+        self.dataset_class = getattr(self.dataset_module, dataset_configs["dataset_class"])
         random_seed = dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
         torch.manual_seed(random_seed)
         np.random.seed(random_seed)
+        random.seed(random_seed)
+
+        number_of_models = dataset_configs.get("number_of_models", dataset_configs["number_of_clusters"])
         self.dataset_params = utils.remove_keys(
             dataset_configs,
-            ["dataset_package", "dataset_class", "model_class"],
+            ["dataset_package", "dataset_class", "model_class", "number_of_models"],
         )
         self.dataset = self.dataset_class(self.rank, self.machine_id, self.mapping, **self.dataset_params)  # type: RotatedDataset
 
@@ -306,12 +312,22 @@ class DPSGDNodeIDCA(Node):
         # The initialization of the models must be different for each node.
         torch.manual_seed(random_seed * self.uid)
         np.random.seed(random_seed * self.uid)
-        self.model_class = getattr(dataset_module, dataset_configs["model_class"])
-        self.models = [self.model_class() for _ in range(dataset_configs["number_of_clusters"])]  # type: List[Model]
-        # self.models = [self.model_class() for _ in range(1)]  # play with incorrect number of models
+        self.model_class = getattr(self.dataset_module, dataset_configs["model_class"])
+        self.models = [self.model_class() for _ in range(number_of_models)]  # type: List[Model]
+        # self.models = [self.model_class() for _ in range(2)]  # play with incorrect number of models
+
+        # self.share_all_for = 400
+        if self.share_all_for > 0:
+            self.layers_sharing = True
+            self.model_class.set_share_all()  # class method
 
         if self.layers_sharing:
             self.share_layers()
+
+        # log the head layers
+        for name, _ in self.models[0].named_parameters():
+            if name in self.models[0].HEAD_LAYERS:
+                logging.info(f"Layer {name} is in head")
 
         # Put back the previous seed
         torch.manual_seed(random_seed)
@@ -445,7 +461,11 @@ class DPSGDNodeIDCA(Node):
             # best model choice in done in trainer
             # self.adjust_learning_rate(iteration)
             treshold_explo = self.compute_treshold(iteration)
+            self.handle_sharing()
             self.trainer.train(self.dataset, treshold_explo)
+            if len(self.models) >= 2:
+                num_lay_diff = len(self.trainer.compare_model_parameters(self.models[0], self.models[1]))
+                logging.info(f"Model differences after train: {num_lay_diff}")
 
             # sharing
             self.my_neighbors = self.get_neighbors()
@@ -472,7 +492,6 @@ class DPSGDNodeIDCA(Node):
             averaging_deque = dict()
             for neighbor in self.my_neighbors:
                 averaging_deque[neighbor] = self.peer_deques[neighbor]
-
             self.sharing._averaging(averaging_deque)
             # after averaging, the current is not the best anymore
             self.trainer.current_model_is_best = False
@@ -496,13 +515,18 @@ class DPSGDNodeIDCA(Node):
                 if self.dataset.__validating__:
                     logging.info("evaluating on validation set.")
                     results_dict = self.eval_on_validationset(results_dict, iteration)
+                self.after_eval_step(results_dict)
 
             self.write_results_dict(results_dict)
 
-        # Done with all iterations
-        last_iteration = self.iterations - (self.iterations - 1) % self.train_evaluate_after
+        # print("return")
+        # return
 
-        final_best_model_idx = results_dict["test_best_model_idx"][str(last_iteration)]
+        # Done with all iterations
+        # last_iteration = self.iterations - (self.iterations - 1) % self.train_evaluate_after
+        last_iteration = int(list(results_dict["validation_best_model_idx"].keys())[-1])
+
+        final_best_model_idx = results_dict["validation_best_model_idx"][str(last_iteration)]
         final_best_model = self.models[final_best_model_idx]
 
         if self.do_all_reduce_models:
@@ -510,6 +534,7 @@ class DPSGDNodeIDCA(Node):
             final_best_model = self.models[final_best_model_idx]
 
             # final test
+            logging.info("Final evaluation (after all-reduce).")
             results_dict = self.get_results_dict(iteration=self.iterations)
             results_dict = self.compute_best_model_log_train_loss(results_dict, self.iterations)
             results_dict = self.eval_on_testset(results_dict, self.iterations)
@@ -544,13 +569,30 @@ class DPSGDNodeIDCA(Node):
         self.trainer.update_optimizer_params(new_params)  # only updates params of trainer, not node
 
     def compute_treshold(self, iteration: int):
-        if iteration < self.iterations / 2:
-            treshold_explo = np.exp(-iteration * 6 / self.iterations)
+        if iteration < self.iterations / 4:  # NOTE here was 2
+            # treshold_explo = np.exp(-iteration * 6 / self.iterations)
+            treshold_explo = 1.0
         else:
             treshold_explo = 0.0
+
+        # if iteration > self.iterations * 2 / 3:
+        #     for model in self.models:
+        #         model.freeze_body()
         # treshold_explo = np.maximum(1 - iteration * 2 / self.iterations, 0.0)
         # treshold_explo = np.exp(-iteration * 3 / self.iterations)
+        # treshold_explo = 0.2
         return treshold_explo
+
+    def handle_sharing(self):
+        if self.iteration >= self.share_all_for:
+            if self.core_layers_sharing:
+                logging.info("Sharing core layers")
+                self.model_class.set_share_core()  # class method
+            else:
+                logging.info("Sharing no layers")
+                self.layers_sharing = False
+        else:
+            logging.info("Sharing all layers")
 
     def received_from_all(self):
         """
@@ -586,6 +628,7 @@ class DPSGDNodeIDCA(Node):
                 "test_acc": {},
                 "test_best_model_idx": {},
                 "validation_loss": {},
+                "all_val_loss": {str(idx): {} for idx in range(len(self.models))},
                 "validation_acc": {},
                 "validation_best_model_idx": {},
                 "total_bytes": {},
@@ -635,9 +678,12 @@ class DPSGDNodeIDCA(Node):
             results_dict (dict): Dictionary containing the results
             iteration (int): current iteration
         """
-        if not self.trainer.current_model_is_best:
-            # If the current model is not the best, we need to choose the best model
-            self.trainer.choose_best_model(self.dataset)
+
+        # increase the rounds to have better data average
+        training_rounds = self.trainer.rounds
+        self.trainer.rounds = 100  # more precise
+        self.trainer.choose_best_model(self.dataset)
+        self.trainer.rounds = training_rounds  # put back the original value
 
         if self.log_per_sample_loss:
             # log the per sample loss for MIA
@@ -658,7 +704,7 @@ class DPSGDNodeIDCA(Node):
             "Communication Rounds",
             os.path.join(self.log_dir, "{}_train_loss.png".format(self.rank)),
         )
-        self.save_plot_models(results_dict["all_train_loss"])
+        self.save_plot_models(results_dict["all_train_loss"], "training")
 
         return results_dict
 
@@ -684,12 +730,18 @@ class DPSGDNodeIDCA(Node):
         Returns:
             dict: Dictionary containing the results
         """
+        # testing is too long, we do it only at the end
+        if isinstance(self.dataset, RotatedFLICKR) and not iteration >= self.iterations - 1:
+            return results_dict
+        logging.info("Begin evaluation on test set.")
         ta, tl, bidx = self.dataset.test(self.models, self.loss)
+        # ta, tl, bidx = 0, 0, 0
         results_dict["test_acc"][str(iteration + 1)] = ta
         results_dict["test_loss"][str(iteration + 1)] = tl
         results_dict["test_best_model_idx"][str(iteration + 1)] = bidx
 
         # log some metrics for MIA and fairness
+        logging.info("Begin per sample evaluation on test set.")
         self.compute_log_per_sample_metrics_test(results_dict, iteration, bidx)
 
         return results_dict
@@ -717,7 +769,10 @@ class DPSGDNodeIDCA(Node):
         if self.log_per_sample_loss:
             results_dict["per_sample_loss_test"][str(iteration + 1)] = json.dumps(per_sample_loss)
         if log_pred_this_iter:
-            results_dict["per_sample_pred_test"][str(iteration + 1)] = json.dumps(per_sample_pred)
+            if isinstance(per_sample_pred[0], list):
+                results_dict["per_sample_pred_test"][str(iteration + 1)] = per_sample_pred
+            else:
+                results_dict["per_sample_pred_test"][str(iteration + 1)] = json.dumps(per_sample_pred)
             results_dict["per_sample_true_test"][str(iteration + 1)] = json.dumps(per_sample_true)
         return results_dict
 
@@ -732,7 +787,13 @@ class DPSGDNodeIDCA(Node):
         # log the per sample loss for MIA, or don't
         # self.compute_log_per_sample_loss_val(results_dict, iteration)
 
-        va, vl, bidx = self.dataset.validate(self.models, self.loss)
+        logging.info("Begin evaluation on validation set.")
+        va, vl, all_val_loss, bidx = self.dataset.validate(self.models, self.loss)
+
+        for idx in range(len(self.models)):
+            results_dict["all_val_loss"][str(idx)][str(iteration + 1)] = all_val_loss[idx]
+        self.save_plot_models(results_dict["all_val_loss"], "validation")
+
         results_dict["validation_acc"][str(iteration + 1)] = va
         results_dict["validation_loss"][str(iteration + 1)] = vl
         results_dict["validation_best_model_idx"][str(iteration + 1)] = bidx
@@ -779,7 +840,7 @@ class DPSGDNodeIDCA(Node):
         plt.title(title)
         plt.savefig(filename)
 
-    def save_plot_models(self, models_losses: Dict[int, Dict]):
+    def save_plot_models(self, models_losses: Dict[int, Dict], type_="training"):
         """
         Save the plot of the models.
 
@@ -791,9 +852,12 @@ class DPSGDNodeIDCA(Node):
             plt.plot(x_axis, y_axis, label=f"Model {idx}")
         plt.legend()
         plt.xlabel("Communication Rounds")
-        plt.ylabel("Training Loss")
-        plt.title("Training Loss of all models")
-        plt.savefig(os.path.join(self.log_dir, f"{self.rank}_all_train_loss.png"))
+        plt.ylabel(f"{type_} loss")
+        plt.title(f"{type_} loss of all models")
+        plt.savefig(os.path.join(self.log_dir, f"{self.rank}_all_{type_}_loss.png"))
+
+    def after_eval_step(self, result_dict):
+        pass
 
     def all_reduce_model(self, final_model_idx: int):
         """
@@ -810,14 +874,14 @@ class DPSGDNodeIDCA(Node):
             Averaged model
 
         """
-        if self.sharing_class != CurrentModelSharing:
+        if self.sharing_class != CurrentModelSharing and self.sharing_class != CurrentModelSharingFair:
             raise NotImplementedError
 
         fc_graph = FullyConnected(self.n_procs)
         self.my_neighbors = fc_graph.neighbors(self.uid)
         self.connect_neighbors()
 
-        to_send = self.sharing.get_data_to_send(final_model_idx, degree=len(self.my_neighbors))
+        to_send = self.get_data_to_send()
         to_send["CHANNEL"] = "DPSGD"
 
         for neighbor in self.my_neighbors:

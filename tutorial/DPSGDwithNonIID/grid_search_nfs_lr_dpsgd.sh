@@ -5,12 +5,12 @@ nfs_decpy=/mnt/nfs/thiba/decentralizepy
 eval_file=$nfs_decpy/eval/testingDPSGDnIID.py # decentralized driver code (run on each machine)
 script_path=$nfs_decpy/tutorial/DPSGDwithNonIID # Path to the folder where the run_IDCAwPS.sh is located
 
-config_file=config_CIFAR_gs_lr_nfs_dpsgd.ini
+config_file=config_IMGNETTE_dpsgd.ini
 
 config_file_path=$script_path/configs/$config_file
 
 # m=0 # machine id corresponding consistent with ip.json
-ip_machines=$nfs_decpy/tutorial/DPSGDwithNonIID/ip_nfs.json
+ip_machines=$nfs_decpy/tutorial/ip_files/ip_nfs_1617.json
 m=$(cat $ip_machines | grep $HOSTNAME | awk '{print $1}' | cut -d'"' -f2)
 echo M is $m
 
@@ -35,21 +35,21 @@ run_path=$machine_decpy/eval/data # Path to the folder where the graph and confi
 
 cp $config_file_path $run_path
 
-machines=4 # number of machines in the runtime
+machines=2 # number of machines in the runtime
 test_after=40
 log_level=DEBUG #INFO # DEBUG | INFO | WARN | CRITICAL
 procs_per_machine=8 # =32/4
 iterations=1200
 
 
-prefix_dir=new_exp_dpsgd_gs_$(date '+%Y-%m-%dT%H:%M')
+prefix_dir=testing_dpsgd_imgnette_lrgs_v2_$(date '+%Y-%m-%dT%H:%M')
 
 echo "All started at $(date '+%Y-%m-%dT%H:%M')!"
 
 #first download dataset
 $env_python $machine_decpy/download_dataset.py
 
-lrs=(0.01 0.05 0.1)
+lrs=(0.01 0.003 0.001)
 
 
 for lr in ${lrs[@]}

@@ -238,7 +238,11 @@ def plot_results_3_exp(out_folder, folder_path_IDCA, folder_path_IFCA, folder_pa
     all_results_DPSGD, _ = get_data_from_exp(folder_path_DPSGDnIID)
 
     node_types = ["IDCA", "IFCA", "DPSGD"]
-    metric_funcs = {"demo_parity": compute_demo_parity, "equ_oppo": compute_equ_oppo, "eq_odds": compute_equalized_odds}
+    metric_funcs = {
+        "demo_parity": compute_demo_parity,
+        "equ_oppo": compute_equalized_odds,
+        "eq_odds": compute_equ_oppo,
+    }
 
     all_test_metrics = {m: {config: {} for config in all_results_IDCA.keys()} for m in metric_funcs.keys()}
     # TODO add loss, val, train...
@@ -317,9 +321,9 @@ def compute_equ_oppo(per_clust_rates, per_class_rates):
             per_clust_rates[clusters[1]]["TP"][class_] + per_clust_rates[clusters[1]]["FN"][class_]
         )
 
-        eq_op = abs(rec_0 - rec_1)
-        tot_equ_oppo += eq_op
-    return eq_op / len(classes)
+        eq_oppo = abs(rec_0 - rec_1)
+        tot_equ_oppo += eq_oppo
+    return eq_oppo / len(classes)
 
 
 def compute_equalized_odds(per_clust_rates, per_class_rates):
@@ -327,17 +331,23 @@ def compute_equalized_odds(per_clust_rates, per_class_rates):
     clusters = list(per_clust_rates.keys())
     classes = list(range(len(per_class_rates[clusters[0]]["TP"])))
     for class_ in classes:
+        rec_0 = per_clust_rates[clusters[0]]["TP"][class_] / (
+            per_clust_rates[clusters[0]]["TP"][class_] + per_clust_rates[clusters[0]]["FN"][class_]
+        )
+        rec_1 = per_clust_rates[clusters[1]]["TP"][class_] / (
+            per_clust_rates[clusters[1]]["TP"][class_] + per_clust_rates[clusters[1]]["FN"][class_]
+        )
+        eq_oppo = abs(rec_0 - rec_1)
+
         fpr_0 = per_clust_rates[clusters[0]]["FP"][class_] / (
             per_clust_rates[clusters[0]]["TN"][class_] + per_clust_rates[clusters[0]]["FP"][class_]
         )
         fpr_1 = per_clust_rates[clusters[1]]["FP"][class_] / (
             per_clust_rates[clusters[1]]["TN"][class_] + per_clust_rates[clusters[1]]["FP"][class_]
         )
-
         temp = abs(fpr_0 - fpr_1)
-        eq_op = compute_equ_oppo(per_clust_rates, per_class_rates)
-        tot_equ_odds += temp + eq_op
-    # verif
+        tot_equ_odds += temp + eq_oppo
+
     return tot_equ_odds / len(classes)
 
 

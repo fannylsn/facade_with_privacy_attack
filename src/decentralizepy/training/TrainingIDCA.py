@@ -136,11 +136,11 @@ class TrainingIDCA(Training):
         if self.layers_sharing:
             # share the layers of the trained model
             with torch.no_grad():
-                layers = self.current_model.get_shared_layers()
+                layers = self.current_model.get_shared_layers().copy()
                 for model in self.models:
                     model.set_shared_layers(layers)
 
-    def choose_best_model(self, dataset: Dataset):
+    def choose_best_model(self, dataset: Dataset, batch_size: int = None):
         """
         Choose the best model from the list of models.
         Also, have a percentage of choosing a random model to explore the space.
@@ -150,11 +150,20 @@ class TrainingIDCA(Training):
             treshold (float, optional): Treshold in [0, 1] to explore the space. If set to 0, no exploration is done.
         """
         # chosing the best model
-        trainset_ori = dataset.get_trainset(self.batch_size, self.shuffle)  # all models eval on same samples
+        if batch_size is None:
+            batch_size = self.batch_size
+        # model_choice_batch_size = 32
+        # trainset_ori = dataset.get_trainset(model_choice_batch_size, self.shuffle)  # all models eval on same samples
+        trainset_ori = dataset.get_trainset(batch_size, self.shuffle)  # all models eval on same samples
         # trainset_ori = dataset.get_validationset(self.batch_size, self.shuffle)  # all models eval on same samples
         # logging.debug(f"using validation set of size {len(trainset_ori)}")
-        trainsets = tee(trainset_ori, len(self.models))  # generator copy
-        self.models_losses = [self.eval_loss(model, trainset) for model, trainset in zip(self.models, trainsets)]
+
+        # uncomment to eval on the same samples
+        # trainsets = tee(trainset_ori, len(self.models))  # generator copy
+        # self.models_losses = [self.eval_loss(model, trainset) for model, trainset in zip(self.models, trainsets)]
+
+        self.models_losses = [self.eval_loss(model, trainset_ori) for model in self.models]
+
         self.current_model_loss = min(self.models_losses)
         self.current_model_idx = self.models_losses.index(self.current_model_loss)
         self.current_model = self.models[self.current_model_idx]
@@ -277,7 +286,8 @@ class TrainingIDCA(Training):
         Returns:
             int: Loss Value for the step
         """
-        self.current_model.zero_grad()
+        # self.current_model.zero_grad()
+        self.optimizer.zero_grad()
         output = self.current_model(data)
         loss_val = self.loss(output, target)
         loss_val.backward()
@@ -312,3 +322,24 @@ class TrainingIDCA(Training):
         """
         assert self.models_losses is not None
         return self.models_losses
+
+    def compare_model_parameters(self, model1, model2):
+        with torch.no_grad():
+            state_dict1 = model1.state_dict()
+            state_dict2 = model2.state_dict()
+
+            differing_params = []
+
+            for key in state_dict1:
+                if key not in state_dict2:
+                    differing_params.append((key, "Parameter missing in model2"))
+                    continue
+                if not torch.equal(state_dict1[key], state_dict2[key]):
+                    differing_params.append((key, state_dict1[key], state_dict2[key]))
+
+            # Check for parameters that are in model2 but not in model1
+            for key in state_dict2:
+                if key not in state_dict1:
+                    differing_params.append((key, "Parameter missing in model1"))
+
+            return differing_params
