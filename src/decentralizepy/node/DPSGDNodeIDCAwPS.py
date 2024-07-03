@@ -203,6 +203,8 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
         self.log_per_sample_pred_true = node_config["log_per_sample_pred_true"]
         self.do_all_reduce_models = node_config["do_all_reduce_models"]
         self.layers_sharing = node_config["layers_sharing"]
+        self.core_layers_sharing = node_config["layers_sharing"]
+        self.share_all_for = node_config.get("share_all_for", 0)
 
         graph_package = importlib.import_module(node_config["graph_package"])
         self.graph_class = getattr(graph_package, node_config["graph_class"])
@@ -228,7 +230,7 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
         self.graph = self.graph_class(
             self.n_procs,
             self.graph_degree,
-            seed=self.graph_seed * 100000 + self.iteration,
+            seed=self.graph_seed * 10000 + self.iteration,
         )
 
     def get_data_to_send(self) -> Dict:

@@ -10,7 +10,7 @@ config_file=idca_test_solo.ini
 config_file_path=$script_path/configs/$config_file
 
 m=0 # machine id corresponding consistent with ip.json
-ip_machines=$nfs_decpy/tutorial/IDCA/ip.json # !!!
+ip_machines=$nfs_decpy/tutorial/ip0507.json # !!!
 # m=$(cat $ip_machines | grep $HOSTNAME | awk '{print $1}' | cut -d'"' -f2)
 echo M is $m
 

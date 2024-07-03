@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 from decentralizepy.datasets.Dataset import Dataset
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.models.Model import Model
+from decentralizepy.utils_decpy.losses import FeatureAlignmentLoss
 
 
 class DatasetClustered(Dataset):
@@ -31,6 +32,7 @@ class DatasetClustered(Dataset):
         validation_source="",
         validation_size="",
         number_of_clusters: int = 1,
+        top_k_acc=1,
     ):
         """
         Constructor which reads the data files, instantiates and partitions the dataset
@@ -84,13 +86,16 @@ class DatasetClustered(Dataset):
 
         self.number_of_clusters = number_of_clusters
         self.assign_cluster()
-        logging.debug("Clusters idx: {}".format(self.clusters_idx))
-        logging.debug("Cluster: {}".format(self.cluster))
+        logging.info("Clusters idx: {}".format(self.clusters_idx))
+        logging.info("Cluster: {}".format(self.cluster))
 
         # carefull, we dont duplicated one dataset per rotated clusted like IFCA.
         self.dataset_id = sum(
             [idx == self.cluster for idx in self.clusters_idx[: self.uid]]
         )  # id of the dataset in the cluster of the node
+
+        self.top_k_acc = top_k_acc
+        logging.debug(f"topk accuracy: {self.top_k_acc}")
 
     def assign_cluster(self):
         """Generate the cluster assignment for the current process."""
@@ -143,6 +148,10 @@ class DatasetClustered(Dataset):
 
         """
         if self.__training__:
+            # torch.manual_seed(self.random_seed * self.uid)
+            # x = next(iter(DataLoader(self.trainset, batch_size=batch_size, shuffle=shuffle)))
+            # logging.info(f"sample of call dataloader: {x[0][0,0,0]}")
+            # torch.manual_seed(self.random_seed * self.uid)
             return DataLoader(self.trainset, batch_size=batch_size, shuffle=shuffle)
         raise RuntimeError("Training set not initialized!")
 
@@ -222,6 +231,11 @@ class DatasetClustered(Dataset):
         for i, model in enumerate(models):
             model.eval()
             logging.debug("Model {} in evaluation mode.".format(i))
+            # with fairness, one func per model
+            if isinstance(loss_func, list):
+                loss_func_ = loss_func[i]
+            else:
+                loss_func_ = loss_func
 
             correct_pred_per_cls = [0 for _ in range(self.num_classes)]
             total_pred_per_cls = [0 for _ in range(self.num_classes)]
@@ -234,12 +248,16 @@ class DatasetClustered(Dataset):
                 count = 0
                 for elems, labels in self.get_testset():
                     outputs = model(elems)
-                    loss_val += loss_func(outputs, labels).item()
+                    if isinstance(loss_func_, FeatureAlignmentLoss):
+                        # forward pass for the other model to compute features
+                        _ = loss_func_.model_other(elems)
+                    loss_val += loss_func_(outputs, labels).item()
                     count += 1
-                    _, predictions = torch.max(outputs, 1)
+                    _, predictions = torch.topk(outputs, self.top_k_acc)
+                    # _, predictions = torch.max(outputs, 1)
                     for label, prediction in zip(labels, predictions):
                         # logging.debug("{} predicted as {}".format(label, prediction))
-                        if label == prediction:
+                        if label in prediction:  # top-k done here
                             correct_pred_per_cls[label] += 1
                             total_correct += 1
                         total_pred_per_cls[label] += 1
@@ -288,7 +306,7 @@ class DatasetClustered(Dataset):
         tuple(float, float, int)
 
         """
-        logging.debug("Evaluate model on the test set")
+        logging.debug("Evaluate model on the val set")
         loss_vals = []
         correct_preds_per_cls = []
         totals_pred_per_cls = []
@@ -304,6 +322,12 @@ class DatasetClustered(Dataset):
             model.eval()
             logging.debug("Model {} in evaluation mode.".format(i))
 
+            # with fairness, one func per model
+            if isinstance(loss_func, list):
+                loss_func_ = loss_func[i]
+            else:
+                loss_func_ = loss_func
+
             correct_pred_per_cls = [0 for _ in range(self.num_classes)]
             total_pred_per_cls = [0 for _ in range(self.num_classes)]
 
@@ -315,12 +339,16 @@ class DatasetClustered(Dataset):
                 count = 0
                 for elems, labels in self.get_validationset():
                     outputs = model(elems)
-                    loss_val += loss_func(outputs, labels).item()
+                    if isinstance(loss_func_, FeatureAlignmentLoss):
+                        # forward pass for the other model to compute features
+                        _ = loss_func_.model_other(elems)
+                    loss_val += loss_func_(outputs, labels).item()
                     count += 1
-                    _, predictions = torch.max(outputs, 1)
+                    _, predictions = torch.topk(outputs, self.top_k_acc)
+                    # _, predictions = torch.max(outputs, 1)
                     for label, prediction in zip(labels, predictions):
                         # logging.debug("{} predicted as {}".format(label, prediction))
-                        if label == prediction:
+                        if label in prediction:  # top-k done here
                             correct_pred_per_cls[label] += 1
                             total_correct += 1
                         total_pred_per_cls[label] += 1
@@ -344,14 +372,15 @@ class DatasetClustered(Dataset):
             logging.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
 
         accuracy = 100 * float(totals_correct[best_model_idx]) / totals_predicted[best_model_idx]
-        final_loss_val = loss_vals[best_model_idx] / count
+        loss_vals = [loss_val / count for loss_val in loss_vals]
+        final_loss_val = loss_vals[best_model_idx]
         logging.info("Overall test accuracy is: {:.1f} %".format(accuracy))
 
         if only_one_model:
             # compatibility with the previous version
             return accuracy, final_loss_val
 
-        return accuracy, final_loss_val, best_model_idx
+        return accuracy, final_loss_val, loss_vals, best_model_idx
 
     def compute_per_sample_loss(
         self, model: Model, loss_func, validation: bool = False, log_loss: bool = False, log_pred_true: bool = False
@@ -374,14 +403,23 @@ class DatasetClustered(Dataset):
             per_sample_loss = []
             per_sample_pred = []
             per_sample_true = []
+            if not log_loss and not log_pred_true:
+                return per_sample_loss, per_sample_pred, per_sample_true
             for elems, labels in dataset:
                 outputs = model(elems)
+                if isinstance(loss_func, FeatureAlignmentLoss):
+                    # forward pass for the other model to compute features
+                    _ = loss_func.model_other(elems)
                 loss_val = loss_func(outputs, labels)
-                _, predictions = torch.max(outputs, 1)
+                # _, predictions = torch.max(outputs, 1)
+                _, predictions = torch.topk(outputs, self.top_k_acc)
                 if log_loss:
                     per_sample_loss.extend(loss_val.tolist())
                 if log_pred_true:
-                    per_sample_pred.extend(predictions.tolist())
+                    if self.top_k_acc > 1:
+                        per_sample_pred.append(predictions.tolist())  # pred is list of list
+                    else:
+                        per_sample_pred.extend(predictions.tolist())
                     per_sample_true.extend(labels.tolist())
 
         return per_sample_loss, per_sample_pred, per_sample_true

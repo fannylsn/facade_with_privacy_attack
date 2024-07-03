@@ -11,7 +11,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 from sklearn.metrics import confusion_matrix, roc_auc_score, roc_curve
 
-plt.rcParams.update({"font.size": 19})
+plt.rcParams.update({"font.size": 20})
 plt.rc("legend", fontsize=18)
 
 CIFAR_CLASSES = {
@@ -259,7 +259,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
     final_data = get_per_cluster_stats(results, metric="test_acc")
     per_cluster_plot(final_data, "Testing accuracy per cluster", "upper right")
 
-    plt.figure(333)
+    plt.figure(333, figsize=(10, 6))
     final_data = get_per_cluster_stats(results, metric="test_acc")
     per_cluster_plot_intro(final_data, "Testing accuracy for DPSGD (30:2)", "lower right")
 

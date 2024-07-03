@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
-from sklearn.metrics import confusion_matrix, roc_auc_score, roc_curve
+from sklearn.metrics import roc_auc_score, roc_curve
 
 CIFAR_CLASSES = {
     0: "plane",
@@ -23,6 +23,16 @@ CIFAR_CLASSES = {
     8: "ship",
     9: "truck",
 }
+
+FLICKR_CLASSES = {k: str(k) for k in range(41)}
+
+DATA_CLASSES = FLICKR_CLASSES
+
+
+plt.rcParams.update({"font.size": 20})
+plt.rc("legend", fontsize=18)
+
+CLUSTER_NAMES = {0: "A", 1: "B", 2: "C"}
 
 
 def get_stats(data):
@@ -64,28 +74,39 @@ def get_per_cluster_stats(results, metric="test_loss"):
     return final_data
 
 
-def plot(means, stdevs, mins, maxs, title, label, loc, xlabel="communication rounds"):
+def plot(means, stdevs, mins, maxs, title, label=None, loc="lower right", xlabel="communication rounds", yticks=None):
     plt.title(title)
     plt.xlabel(xlabel)
+    plt.grid(True, color="gray", linestyle="-", linewidth=0.5)
     x_axis = np.array(list(means.keys()))
     y_axis = np.array(list(means.values()))
     err = np.array(list(stdevs.values()))
     plt.plot(x_axis, y_axis, label=label)
     plt.fill_between(x_axis, y_axis - err, y_axis + err, alpha=0.4)
-    plt.legend(loc=loc)
+    if yticks is not None:
+        plt.yticks(yticks)
+        plt.ylim(0, yticks[-1])
+    if label is not None:
+        plt.legend(loc=loc)
+    plt.tight_layout()
 
 
-def per_cluster_plot(final_data, title, loc, xlabel="communication rounds"):
+def per_cluster_plot(final_data, title, loc, xlabel="communication rounds", yticks=None):
     for clust, data in final_data.items():
         means, stdevs, mins, maxs = data
         x_axis = np.array(list(means.keys()))
         y_axis = np.array(list(means.values()))
         err = np.array(list(stdevs.values()))
-        plt.plot(x_axis, y_axis, label=f"cluster {clust}")
+        plt.plot(x_axis, y_axis, label=f"cluster {CLUSTER_NAMES[clust]}")
         plt.fill_between(x_axis, y_axis - err, y_axis + err, alpha=0.4)
+    if yticks is not None:
+        plt.yticks(yticks)
+        plt.ylim(0, yticks[-1])
     plt.xlabel(xlabel)
+    plt.grid(True, color="gray", linestyle="-", linewidth=0.5)
     plt.title(title)
-    plt.legend(loc=loc)
+    plt.legend(loc=loc, ncols=2)
+    plt.tight_layout()
 
 
 def replace_dict_key(d_org: dict, d_other: dict):
@@ -195,7 +216,6 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             "mean": list(means.values()),
             "std": list(stdevs.values()),
             "nr_nodes": [len(results)] * len(means),
-            "total_bytes": correct_bytes,
         },
         list(means.keys()),
         columns=["mean", "std", "nr_nodes", "total_bytes"],
@@ -220,18 +240,26 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
     df.to_csv(os.path.join(folder_path, "test_loss.csv"), index_label="rounds")
     # Plot Testing Accuracy
-    plt.figure(3)
+    plt.figure(3, figsize=(8, 7))
     means, stdevs, mins, maxs = get_stats([x["test_acc"] for x in results])
-    plot(means, stdevs, mins, maxs, "Testing Accuracy", folder_path, "lower right")
+    plot(
+        means,
+        stdevs,
+        mins,
+        maxs,
+        "Testing Accuracy",
+        loc="lower right",
+        yticks=np.arange(0, 81, 10),
+    )
+    # print("means", means, "stdevs", stdevs)
     df = pd.DataFrame(
         {
             "mean": list(means.values()),
             "std": list(stdevs.values()),
             "nr_nodes": [len(results)] * len(means),
-            "total_bytes": correct_bytes,
         },
         list(means.keys()),
-        columns=["mean", "std", "nr_nodes", "total_bytes"],
+        columns=["mean", "std", "nr_nodes"],
     )
 
     plt.figure(13)
@@ -248,9 +276,9 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
     )
     df.to_csv(os.path.join(folder_path, "test_acc.csv"), index_label="rounds")
 
-    plt.figure(33)
+    plt.figure(33, figsize=(8, 7))
     final_data = get_per_cluster_stats(results, metric="test_acc")
-    per_cluster_plot(final_data, "Testing accuracy per cluster", "upper right")
+    per_cluster_plot(final_data, "Testing accuracy per cluster", "lower right", yticks=np.arange(0, 81, 10))
     df = pd.DataFrame(
         {
             "mean_0": list(final_data[0][0].values()),
@@ -258,12 +286,15 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             "mean_1": list(final_data[1][0].values()),
             "std_1": list(final_data[1][1].values()),
             "nr_nodes": [len(results)] * len(means),
-            "total_bytes": correct_bytes,
         },
         list(means.keys()),
-        columns=["mean_0", "std_0", "mean_1", "std_1", "nr_nodes", "total_bytes"],
+        columns=["mean_0", "std_0", "mean_1", "std_1", "nr_nodes"],
     )
     df.to_csv(os.path.join(folder_path, "test_acc_clut.csv"), index_label="rounds")
+
+    # compute custom metric
+    plt.figure(333)
+    plot_fair_accuracy(final_data, folder_path)
 
     # Collect total_bytes shared
     bytes_list = []
@@ -312,6 +343,7 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
     plt.savefig(os.path.join(folder_path, "test_loss_per_cluster.png"), dpi=300)
     plt.figure(3)
     plt.savefig(os.path.join(folder_path, "test_acc.png"), dpi=300)
+    plt.savefig(os.path.join(folder_path, "test_acc.pdf"), dpi=300)
     plt.figure(33)
     plt.savefig(os.path.join(folder_path, "test_acc_per_cluster.png"), dpi=300)
 
@@ -365,6 +397,9 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         plt.figure(8)
         plot_cluster_variation(folder_path, results)
 
+        plt.figure(80)
+        plot_all_models_train_loss(folder_path, results)
+
     if "per_sample_loss_train" in results[0].keys():
         # for MIA
         for res in results:
@@ -379,24 +414,49 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
     if "per_sample_pred_test" in results[0].keys() and results[0]["per_sample_pred_test"]:
         for res in results:
-            res["per_sample_pred_test"] = {k: json.loads(v) for k, v in res["per_sample_pred_test"].items()}
-            res["per_sample_true_test"] = {k: json.loads(v) for k, v in res["per_sample_true_test"].items()}
+            for k, v in res["per_sample_pred_test"].items():
+                if isinstance(v, list):
+                    res["per_sample_pred_test"][k] = v
+                else:
+                    res["per_sample_pred_test"][k] = json.loads(v)
+            for k, v in res["per_sample_true_test"].items():
+                if isinstance(v, list):
+                    res["per_sample_true_test"][k] = v
+                else:
+                    res["per_sample_true_test"][k] = json.loads(v)
         per_class_rates, per_cluster_rates = compute_rates(results)
         plt.figure()
         plot_per_class_demographic_parity(per_class_rates, folder_path)
         plt.figure()
-        plot_per_class_equal_opportunities(per_class_rates, folder_path)
+        per_class_equalized_odds(per_class_rates, folder_path)
 
 
 def plot_cluster_model_evolution(folder_path, results):
-    data = [(x["cluster_assigned"], int(k), v) for x in results for k, v in x["test_best_model_idx"].items()]
+    if results[0]["test_best_model_idx"] == {}:
+        data = []
+        for res in results:
+            all_train_loss = {}
+            for outer_key, inner_dict in res["all_train_loss"].items():
+                for inner_key, value in inner_dict.items():
+                    if inner_key not in all_train_loss:
+                        all_train_loss[inner_key] = {}
+                    all_train_loss[inner_key][outer_key] = value
+            train_best_idx = [
+                (res["cluster_assigned"], int(k), list(v.values()).index(best_loss))
+                for (k, v), best_loss in zip(all_train_loss.items(), res["train_loss"].values())
+            ]
+            data.extend(train_best_idx)
+    else:
+        data = [(x["cluster_assigned"], int(k), v) for x in results for k, v in x["test_best_model_idx"].items()]
     clusters = set([x[0] for x in data])
     models = set([x[2] for x in data])
     max_iter = max([el[1] for el in data])
     space_iter = data[1][1] - data[0][1]
+    if space_iter == 0:
+        space_iter = 1
     init_iter = data[0][1]
-    fig, axs = plt.subplots(len(clusters), 1)
-    fig.suptitle("Number of node in each cluster picking each model")
+    fig, axs = plt.subplots(len(clusters), 1, figsize=(10, 9))
+    fig.suptitle("Number of node in each cluster picking each head")
     for i, cluster in enumerate(clusters):
         cluster_data = [x for x in data if x[0] == cluster]
         for model in models:
@@ -414,27 +474,60 @@ def plot_cluster_model_evolution(folder_path, results):
             )
         axs[i].set_ylim(ymin=0)
         axs[i].set_xticks(np.arange(0, max_iter + 1, 10))
-        axs[i].title.set_text(f"Cluster {cluster} Data Distribution")
+        axs[i].title.set_text(f"{int(len(cluster_data)/len(count))} nodes in cluster {CLUSTER_NAMES[cluster]}")
         axs[i].legend(loc="upper right", fontsize="8")
-        axs[i].set_ylabel("Nodes")
+        axs[i].set_ylabel("# of nodes")
     # fig.text(0.00, 0.5, "Number of nodes", va="center", rotation="vertical")
     axs[i].set_xlabel("Communication Rounds")
     plt.tight_layout()
     plt.savefig(os.path.join(folder_path, "cluster_model_evolution.png"), dpi=300)
+    plt.savefig(os.path.join(folder_path, "cluster_model_evolution.pdf"), dpi=300)
     plt.close()
 
 
 def plot_final_cluster_model_attribution(folder_path, results):
+    if results[0]["test_best_model_idx"] == {}:
+        plot_final_train_cluster_model_attribution(folder_path, results)
+        return
     max_iter = max([int(iter) for x in results for iter in x["test_best_model_idx"].keys()])
 
     data = [(x["cluster_assigned"], x["test_best_model_idx"][str(max_iter)]) for x in results]
+    df = pd.DataFrame(data, columns=["Cluster Assigned", "Best Head"])
+    heatmap_data = df.groupby(["Cluster Assigned", "Best Head"]).size().reset_index(name="Count")
+    heatmap_matrix = heatmap_data.pivot(index="Cluster Assigned", columns="Best Head", values="Count").fillna(0)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(heatmap_matrix, annot=True, fmt="g", cmap="YlGnBu")
+    plt.title("Final Head choice")
+    plt.savefig(os.path.join(folder_path, "cluster_model_distribution.png"), dpi=300)
+    plt.savefig(os.path.join(folder_path, "cluster_model_distribution.pdf"), dpi=300)
+    plt.close()
+
+
+def plot_final_train_cluster_model_attribution(folder_path, results):
+    data = []
+    for res in results:
+        all_train_loss = {}
+        for outer_key, inner_dict in res["all_train_loss"].items():
+            for inner_key, value in inner_dict.items():
+                if inner_key not in all_train_loss:
+                    all_train_loss[inner_key] = {}
+                all_train_loss[inner_key][outer_key] = value
+
+        last_iter = str(max([int(k) for k in all_train_loss.keys()]))
+        final_best_idx = (
+            res["cluster_assigned"],
+            list(all_train_loss[last_iter].values()).index(res["train_loss"][last_iter]),
+        )
+        data.append(final_best_idx)
+
     df = pd.DataFrame(data, columns=["Cluster Assigned", "Best Model"])
     heatmap_data = df.groupby(["Cluster Assigned", "Best Model"]).size().reset_index(name="Count")
     heatmap_matrix = heatmap_data.pivot(index="Cluster Assigned", columns="Best Model", values="Count").fillna(0)
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(10, 8))
     sns.heatmap(heatmap_matrix, annot=True, fmt="g", cmap="YlGnBu")
     plt.title("Heatmap of Data Distribution")
     plt.savefig(os.path.join(folder_path, "cluster_model_distribution.png"), dpi=300)
+    plt.savefig(os.path.join(folder_path, "cluster_model_distribution.pdf"), dpi=300)
     plt.close()
 
 
@@ -457,6 +550,67 @@ def plot_cluster_variation(folder_path, results):
     plt.ylabel("Sum of all variations")
     plt.savefig(os.path.join(folder_path, "cluster_variation.png"), dpi=300)
     plt.close()
+
+
+def plot_all_models_train_loss(folder_path, results):
+    real_cluster = [x["cluster_assigned"] for x in results]
+    fig, axs = plt.subplots(1, len(set(real_cluster)))
+    # fig.set_figheight(4.35)
+    fig.set_figheight(5)
+    fig.set_figwidth(10)
+    fig.suptitle("Training loss of each models on the node's dataset\naveraged across all nodes in each cluster")
+    for clust in sorted(list(set(real_cluster))):
+        data = [x for x in results if x["cluster_assigned"] == clust]
+        all_models = sorted(list(set(data[0]["all_train_loss"].keys())))
+        for model in all_models:
+            model_data = [x["all_train_loss"][model] for x in data]
+            means, stdevs, mins, maxs = get_stats(model_data)
+            x = np.array(list(means.keys()))
+            y = np.array(list(means.values()))
+            yerr = np.array(list(stdevs.values()))
+            axs[clust].plot(x, y, label=f"model {model}")
+            axs[clust].fill_between(x, y - yerr, y + yerr, alpha=0.4)
+
+        axs[clust].set_title(f"Cluster {CLUSTER_NAMES[clust]}\n({len(data)} nodes)")
+        # axs[clust].set_title(f"\nCluster {clust}\n({len(data)} nodes)")
+        # axs[clust].legend(loc="lower left")
+        axs[clust].set_xlabel("Comm. rounds")
+    handles, labels = axs[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc=(0.17, 0.745), ncols=3)
+    # fig.legend(handles, labels, loc=(0.17, 0.88), ncols=3)
+    axs[0].set_ylabel("Training loss")
+    plt.tight_layout()
+    plt.savefig(os.path.join(folder_path, "all_models_train_loss.png"), dpi=300)
+    plt.savefig(os.path.join(folder_path, "all_models_train_loss.pdf"), dpi=300)
+    plt.close()
+
+
+def plot_fair_accuracy(final_data, folder_path, label="Fair Accuracy", mean_type="weighted"):
+    mean_acc = {}
+    acc_simility = {}
+    fair_accuracy = {}
+    for it in final_data[0][0]:
+        accs = [acc[0][it] for acc in final_data.values()]
+        mean_acc[it] = np.mean(accs)
+        min_acc = np.min(accs)
+        max_acc = np.max(accs)
+        acc_simility[it] = 100 - (max_acc - min_acc)
+        if mean_type == "arithmetic":
+            fair_accuracy[it] = (mean_acc[it] + acc_simility[it]) / 2
+        elif mean_type == "harmonic":
+            fair_accuracy[it] = 2 * mean_acc[it] * acc_simility[it] / (mean_acc[it] + acc_simility[it])
+        if mean_type == "weighted":
+            fair_accuracy[it] = (2 * mean_acc[it] + acc_simility[it]) / 3
+
+    # plt.plot(list(mean_acc.keys()), list(mean_acc.values()), label="Mean accuracy")
+    # plt.plot(list(acc_simility.keys()), list(acc_simility.values()), label="Accuracy similarity")
+    plt.plot(list(fair_accuracy.keys()), list(fair_accuracy.values()), label=label)
+    plt.title("Fair Accuracy")
+    plt.xlabel("Communication Rounds")
+    plt.ylabel(f"{mean_type} mean of mean accuracy and accuracy similarity")
+    plt.legend(loc="lower right")
+    plt.savefig(os.path.join(folder_path, "fair_acc.png"))
+    return fair_accuracy
 
 
 def plot_parameters(path):
@@ -681,7 +835,10 @@ def compute_rates(results: List[Dict[str, Any]]):
 
 
 def per_class_perf_measure(y_true, y_pred):
-    cnf_matrix = confusion_matrix(y_true, y_pred, labels=list(CIFAR_CLASSES.keys()))
+    # if isinstance(y_pred[0], int):
+    #     cnf_matrix = confusion_matrix(y_true, y_pred, labels=list(CIFAR_CLASSES.keys()))
+    all_labels = list(set(y_true))
+    cnf_matrix = compute_confusion_matrix(y_true, y_pred, all_labels)
     FP = np.array((cnf_matrix.sum(axis=0) - np.diag(cnf_matrix)), dtype=np.float32)
     FN = np.array((cnf_matrix.sum(axis=1) - np.diag(cnf_matrix)), dtype=np.float32)
     TP = np.array((np.diag(cnf_matrix)).astype(float), dtype=np.float32)
@@ -707,7 +864,26 @@ def per_class_perf_measure(y_true, y_pred):
     return TP, TN, FP, FN
 
 
-def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]], folder_path):
+def compute_confusion_matrix(y_true, y_pred_topk, labels):
+    num_classes = len(labels)
+    cnf_matrix = np.zeros((num_classes, num_classes), dtype=np.float32)
+
+    # Iterate over true and predicted values to populate the confusion matrix
+    for i in range(len(y_true)):
+        true_class = y_true[i]
+        pred_classes = y_pred_topk[i]
+        if isinstance(pred_classes, int):
+            pred_classes = [pred_classes]
+
+        if true_class in pred_classes:
+            cnf_matrix[true_class, true_class] += 1  # True Positive
+        for pred_class in pred_classes:
+            if pred_class != true_class:
+                cnf_matrix[true_class, pred_class] += 1
+    return cnf_matrix
+
+
+def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]], folder_path, config=None):
     """Compute and plot the demographic parity with S the sensitive attribute beeing the cluster belonging of each node.
         TP + FP / all preds
     Args:
@@ -722,7 +898,7 @@ def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]]
 
     demo_parity = abs(pos_preds_0 / tot_0 - pos_preds_1 / tot_1)
     all = np.mean(demo_parity)
-    labels = [CIFAR_CLASSES[i] for i in range(len(demo_parity))]
+    labels = [DATA_CLASSES[i] for i in range(len(demo_parity))]
     labels.append("Mean")
     with_mean = np.append(demo_parity, all)
     df = pd.DataFrame(
@@ -732,8 +908,11 @@ def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]]
         }
     )
     df.to_csv(os.path.join(folder_path, "demographic_parity.csv"))
-
-    plt.plot(with_mean, "o")
+    if config is None:
+        plt.plot(with_mean, "o")
+    else:
+        plt.plot(with_mean, "o", label=config)
+        plt.legend(loc="upper right")
     plt.title("Per class demographic parity")
     plt.ylabel("Absolute difference in accuracy")
     plt.xlabel("Classes")
@@ -741,7 +920,7 @@ def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]]
     plt.savefig(os.path.join(folder_path, "demographic_parity.png"), dpi=300)
 
 
-def plot_per_class_equal_opportunities(per_class_rates: Dict[int, Dict[str, int]], folder_path):
+def per_class_equalized_odds(per_class_rates: Dict[int, Dict[str, int]], folder_path, config=None):
     """Compute and plot the equal opportunities with S the sensitive attribute beeing the cluster belonging of each node.
     Requires that each group has the same recall.
     TP / (TP + FN) (per cluster true positive rate == recall)
@@ -750,43 +929,48 @@ def plot_per_class_equal_opportunities(per_class_rates: Dict[int, Dict[str, int]
         folder_path (_type_): _description_
     """
     clusters = list(per_class_rates.keys())
+    # recall == true positive rate == TP / (TP + FN)
     rec_0 = per_class_rates[clusters[0]]["TP"] / (
         per_class_rates[clusters[0]]["TP"] + per_class_rates[clusters[0]]["FN"]
     )
     rec_1 = per_class_rates[clusters[1]]["TP"] / (
         per_class_rates[clusters[1]]["TP"] + per_class_rates[clusters[1]]["FN"]
     )
+    equal_oppo = abs(rec_0 - rec_1)
 
-    eq_op = abs(rec_0 - rec_1)
-    all = np.mean(eq_op)
-    labels = [CIFAR_CLASSES[i] for i in range(len(eq_op))]
+    # false positive rate == FP / (FP + TN)
+    fpr_0 = per_class_rates[clusters[0]]["FP"] / (
+        per_class_rates[clusters[0]]["FP"] + per_class_rates[clusters[0]]["TN"]
+    )
+    fpr_1 = per_class_rates[clusters[1]]["FP"] / (
+        per_class_rates[clusters[1]]["FP"] + per_class_rates[clusters[1]]["TN"]
+    )
+    fpr_diff = abs(fpr_0 - fpr_1)
+
+    eq_odds = equal_oppo + fpr_diff
+
+    all = np.mean(eq_odds)
+    labels = [DATA_CLASSES[i] for i in range(len(eq_odds))]
     labels.append("Mean")
-    eq_op = np.append(eq_op, all)
+    eq_odds = np.append(eq_odds, all)
     df = pd.DataFrame(
         {
             "class_labels": labels,
-            "demographic_parity": eq_op,
+            "equalized_odds": eq_odds,
         }
     )
-    df.to_csv(os.path.join(folder_path, "equal_opportunities.csv"))
+    df.to_csv(os.path.join(folder_path, "equalized_odds.csv"))
 
-    plt.plot(eq_op, "o")
-    plt.title("Per class equal opportunities")
-    plt.ylabel("Absolute difference in recall")
+    if config is None:
+        plt.plot(eq_odds, "o")
+    else:
+        plt.plot(eq_odds, "o", label=config)
+        plt.legend(loc="upper right")
+    plt.title("Per class equalized odds")
+    plt.ylabel("Absolute difference of recall and false positive rate")
     plt.xlabel("Classes")
-    plt.xticks(range(len(eq_op)), labels, rotation=45)
-    plt.savefig(os.path.join(folder_path, "equal_opportunities.png"), dpi=300)
-
-
-def per_class_equalized_odds(per_class_rates: Dict[int, Dict[str, int]], folder_path):
-    """Compute and plot the equalized odds with S the sensitive attribute beeing the cluster belonging of each node.
-        (TP + ) ??
-
-    Args:
-        per_class_rates (Dict[int, Dict[str, int]]): _description_
-        folder_path (_type_): _description_
-    """
-    pass
+    plt.xticks(range(len(eq_odds)), labels, rotation=45)
+    plt.savefig(os.path.join(folder_path, "equalized_odds.png"), dpi=300)
 
 
 if __name__ == "__main__":

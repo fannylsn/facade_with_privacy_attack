@@ -14,6 +14,7 @@ from decentralizepy.models.Model import Model
 
 NUM_CLASSES = 10
 IMG_SIZE = 128
+CROP_SIZE = 64
 
 
 class RotatedImageNette(RotatedDataset):
@@ -87,8 +88,8 @@ class RotatedImageNette(RotatedDataset):
         # shortest side is 160px
         self.transform = torchvision.transforms.Compose(
             [
-                torchvision.transforms.Resize(64),
-                torchvision.transforms.CenterCrop(64),
+                torchvision.transforms.Resize(CROP_SIZE),
+                torchvision.transforms.CenterCrop(CROP_SIZE),
                 torchvision.transforms.ToTensor(),
                 torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 self.get_rotation_transform(),
@@ -146,10 +147,16 @@ class LeNet(Model):
 
     """
 
-    def __init__(self):
+    HEAD_LAYERS = ["fc1.weight", "fc1.bias"]
+    current_head = HEAD_LAYERS
+    HEAD_BUFFERS = []
+    current_head_buffers = HEAD_BUFFERS
+
+    def __init__(self, feature_layer_name="conv3"):
         """
         Constructor. Instantiates the CNN Model
             with 10 output classes
+            247'561 parameters
 
         """
         super().__init__()
@@ -161,9 +168,39 @@ class LeNet(Model):
         self.conv3 = nn.Conv2d(32, 64, 5, padding="same")
         self.gn3 = nn.GroupNorm(2, 64)
         self.fc1 = nn.Linear(64 * 8 * 8, NUM_CLASSES)
-        # self.fc1 = nn.Linear(64 * 8 * 8, 128)
-        # self.bn1 = nn.BatchNorm1d(128)
-        # self.fc2 = nn.Linear(128, NUM_CLASSES)
+
+        # Register hook for feature extraction
+        # self.feature_layer_name = feature_layer_name
+        # self._register_hook()
+        # self.reset_features()
+
+    # def deepcopy(self):
+    #     with torch.no_grad():
+    #         model = copy.deepcopy(self)
+    #         model._register_hook()
+    #         return model
+
+    def deepcopy(self):
+        """not deep carefull"""
+        model_state = self.state_dict().copy()
+        new_model = LeNet()
+        new_model.load_state_dict(model_state)
+        # new_model._register_hook()  # Make sure to re-register the hook
+        return new_model
+
+    def _register_hook(self):
+        def hook(module, input, output):
+            self.features = output
+
+        for name, module in self.named_modules():
+            if name == self.feature_layer_name:
+                module.register_forward_hook(hook)
+
+    def get_features(self):
+        return self.features
+
+    def reset_features(self):
+        self.features = None
 
     def forward(self, x):
         """
@@ -185,9 +222,11 @@ class LeNet(Model):
         x = self.pool(F.relu(self.gn3(self.conv3(x))))
         x = torch.flatten(x, 1)
         x = self.fc1(x)
-        # x = F.relu(self.bn1(self.fc1(x)))
-        # x = self.fc2(x)
         return x
+
+    def get_layers(self):
+        """Get the blocks of the network."""
+        return [self.conv1, self.conv2, self.conv3, self.fc1]
 
     def get_shared_layers(self):
         """Here define which layers are shared.
@@ -195,15 +234,15 @@ class LeNet(Model):
         Returns:
             List[torch.Tensor]: List of shared layer weights.
         """
+        lays = []
         with torch.no_grad():
-            return [
-                self.conv1.weight.data.clone(),
-                self.conv1.bias.data.clone(),
-                self.conv2.weight.data.clone(),
-                self.conv2.bias.data.clone(),
-                self.conv3.weight.data.clone(),
-                self.conv3.bias.data.clone(),
-            ]
+            for name, buffer in self.named_buffers():
+                if name not in self.current_head_buffers:
+                    lays.append(buffer.detach().clone())
+            for name, param in self.named_parameters():
+                if name not in self.current_head:
+                    lays.append(param.detach().clone())
+        return lays
 
     def set_shared_layers(self, shared_layers: List[nn.Module]):
         """Set the shared layers.
@@ -211,12 +250,20 @@ class LeNet(Model):
         Args:
             shared_layers (List[torch.Tensor]): List of shared layer weights.
         """
-        self.conv1.weight.data = shared_layers[0]
-        self.conv1.bias.data = shared_layers[1]
-        self.conv2.weight.data = shared_layers[2]
-        self.conv2.bias.data = shared_layers[3]
-        self.conv3.weight.data = shared_layers[4]
-        self.conv3.bias.data = shared_layers[5]
+        shared_layers = shared_layers.copy()
+        with torch.no_grad():
+            for name, buffer in self.named_buffers():
+                if name not in self.current_head_buffers:
+                    buffer.copy_(shared_layers.pop(0))
+            for name, param in self.named_parameters():
+                if name not in self.current_head:
+                    param.copy_(shared_layers.pop(0))
+        assert len(shared_layers) == 0, "The shared_layers list should be empty after setting."
+
+    @classmethod
+    def set_share_core(cls):
+        """Never used in imgnette"""
+        pass
 
 
 class LeNetSplit(Model):
@@ -272,6 +319,13 @@ class LeNetSplit(Model):
             if ky in key:
                 isin = True
         return isin
+
+    def deepcopy(self):
+        """not deep carefull"""
+        model_state = self.state_dict().copy()
+        new_model = ResNet8()
+        new_model.load_state_dict(model_state)
+        return new_model
 
 
 class BasicBlock(nn.Module):

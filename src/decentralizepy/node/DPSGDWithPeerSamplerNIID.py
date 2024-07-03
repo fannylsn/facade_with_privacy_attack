@@ -4,10 +4,12 @@ import logging
 import os
 from collections import deque
 from typing import Dict
-import torch
+
 import numpy as np
+import torch
 
 from decentralizepy import utils
+from decentralizepy.datasets.RotatedFLICKR import RotatedFLICKR
 from decentralizepy.graphs.FullyConnected import FullyConnected
 from decentralizepy.graphs.Graph import Graph
 from decentralizepy.mappings.Mapping import Mapping
@@ -462,6 +464,9 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         Returns:
             dict: Dictionary containing the results
         """
+        if isinstance(self.dataset, RotatedFLICKR) and not iteration >= self.iterations - 1:
+            return results_dict
+        logging.info("Begin evaluation on test set.")
         ta, tl = self.dataset.test(self.model, self.loss)
         results_dict["test_acc"][str(iteration + 1)] = ta
         results_dict["test_loss"][str(iteration + 1)] = tl
@@ -507,6 +512,7 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         """
         # log the per sample loss for MIA, or don't
         # self.compute_log_per_sample_loss_val(results_dict, iteration)
+        logging.info("Begin evaluation on validation set.")
 
         va, vl = self.dataset.validate(self.model, self.loss)
         results_dict["validation_acc"][str(iteration + 1)] = va

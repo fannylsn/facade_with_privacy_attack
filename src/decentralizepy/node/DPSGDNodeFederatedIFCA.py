@@ -687,7 +687,7 @@ class DPSGDNodeFederatedIFCA(Node):
             results_dict (dict): Dictionary containing the results
             iteration (int): current iteration
         """
-        va, vl, bidx = self.dataset.validate(self.models, self.loss)
+        va, vl, _, bidx = self.dataset.validate(self.models, self.loss)
         results_dict["validation_acc"][iteration + 1] = va
         results_dict["validation_loss"][iteration + 1] = vl
         results_dict["validation_best_model_idx"][iteration + 1] = bidx

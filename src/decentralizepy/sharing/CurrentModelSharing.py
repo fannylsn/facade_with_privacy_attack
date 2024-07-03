@@ -1,4 +1,3 @@
-import copy
 import importlib
 import logging
 from typing import List
@@ -134,13 +133,13 @@ class CurrentModelSharing(Sharing):
                 weight = 1 / (len(all_recieved) + 1)
                 # initialize
                 # 0 = 1 ??
-                shared_layers = [weight * param for param in self.models[0].get_shared_layers()]
-                tmp_model = copy.deepcopy(self.models[0])
+                shared_layers = [weight * param.clone() for param in self.models[0].get_shared_layers()]
+                tmp_model = self.models[0].deepcopy()
                 for state_dict in all_recieved:
                     tmp_model.load_state_dict(state_dict)
                     other_layers = tmp_model.get_shared_layers()
                     for i, layer in enumerate(shared_layers):
-                        layer += weight * other_layers[i]
+                        layer += weight * other_layers[i].clone()
 
             # iterate on all the current models of the node
             for idx, model in enumerate(self.models):
@@ -152,12 +151,12 @@ class CurrentModelSharing(Sharing):
                     weight = 1.0
                 # initialize the total model
                 for key, value in model.state_dict().items():
-                    total[key] = value * weight
+                    total[key] = value.clone() * weight
                 # add the received models
                 if idx in received_models:
                     for rec_model in received_models[idx]:
                         for key, value in rec_model.items():
-                            total[key] += value * weight
+                            total[key] += value.clone() * weight
                 # assign the new state to the model
                 model.load_state_dict(total)
 
