@@ -3,61 +3,14 @@
    :width: 75px
    :align: right
 
-==============
-decentralizepy
-==============
+======
+Facade
+======
 
-decentralizepy is a framework for running distributed applications (particularly ML) on top of arbitrary topologies (decentralized, federated, parameter server).
-It was primarily conceived for assessing scientific ideas on several aspects of distributed learning (communication efficiency, privacy, data heterogeneity etc.).
+Repository for the artifact of `Fair Decentralized Learning <https://arxiv.org/pdf/2410.02541>`_ published at SaTML 2025.
 
--------------------------
-Setting up decentralizepy
--------------------------
+Decentralized learning (DL) is an emerging approach that enables nodes to collaboratively train a machine learning model without sharing raw data. In many application domains, such as healthcare, this approach faces challenges due to the high level of heterogeneity in the training data's feature space. Such feature heterogeneity lowers model utility and negatively impacts fairness, particularly for nodes with under-represented training data. In this paper, we introduce Facade, a clustering-based DL algorithm specifically designed for fair model training when the training data exhibits several distinct features. The challenge of Facade is to assign nodes to clusters, one for each feature, based on the similarity in the features of their local data, without requiring individual nodes to know apriori which cluster they belong to. Facade (1) dynamically assigns nodes to their appropriate clusters over time, and (2) enables nodes to collaboratively train a specialized model for each cluster in a fully decentralized manner. We theoretically prove the convergence of Facade, implement our algorithm, and compare it against three state-of-the-art baselines. Our experimental results on three datasets demonstrate the superiority of our approach in terms of model accuracy and fairness compared to all three competitors. Compared to the best-performing baseline, Facade on the CIFAR-10 dataset also reduces communication costs by 32.3% to reach a target accuracy when cluster sizes are imbalanced.
 
-* Fork the repository.
-* Clone and enter your local repository.
-* Check if you have ``python>=3.8``. ::
-
-    python --version
-
-* (Optional) Create and activate a virtual environment. ::
-  
-    python3 -m venv [venv-name]
-    source [venv-name]/bin/activate
-
-* Update pip. ::
-
-    pip3 install --upgrade pip
-    pip install --upgrade pip
-
-* On Mac M1, installing ``pyzmq`` fails with `pip`. Use `conda <https://conda.io>`_.
-* Install decentralizepy for development. (zsh) ::
-
-    pip3 install --editable .\[dev\]
-    
-* Install decentralizepy for development. (bash) ::
-
-    pip3 install --editable .[dev]
-
-* Download CIFAR-10 using ``download_dataset.py``. ::
-
-    python download_dataset.py
-
-* (Optional) Download other datasets from LEAF <https://github.com/TalwalkarLab/leaf> and place them in ``eval/data/``.
- 
-----------------
-Running the code
-----------------
-
-* Follow the tutorial in ``tutorial/``. OR,
-* Generate a new graph file with the required topology using ``generate_graph.py``. ::
-
-    python generate_graph.py --help
-
-* Choose and modify one of the config files in ``eval/{step,epoch}_configs``.
-* Modify the dataset paths and ``addresses_filepath`` in the config file.
-* In eval/run.sh, modify arguments as required.
-* Execute eval/run.sh on all the machines simultaneously. There is a synchronization barrier mechanism at the start so that all processes start training together.
 
 ------
 Citing
@@ -65,96 +18,18 @@ Citing
 
 Cite us as ::
 
-    @inproceedings{decentralizepy,
-   author = {Dhasade, Akash and Kermarrec, Anne-Marie and Pires, Rafael and Sharma, Rishi and Vujasinovic, Milos},
-   title = {Decentralized Learning Made Easy with DecentralizePy},
-   year = {2023},
-   isbn = {9798400700842},
-   publisher = {Association for Computing Machinery},
-   address = {New York, NY, USA},
-   url = {https://doi.org/10.1145/3578356.3592587},
-   doi = {10.1145/3578356.3592587},
-   booktitle = {Proceedings of the 3rd Workshop on Machine Learning and Systems},
-   pages = {34–41},
-   numpages = {8},
-   keywords = {peer-to-peer, distributed systems, machine learning, middleware, decentralized learning, network topology},
-   location = {Rome, Italy},
-   series = {EuroMLSys '23}
+   @inproceedings{biswas2024fair,
+     title={{Fair Decentralized Learning}},
+     author={Biswas, Sayan and Kermarrec, Anne-Marie and Sharma, Rishi and Trinca, Thibaud and de Vos, Martijn},
+     booktitle={3rd IEEE Conference on Secure and Trustworthy Machine Learning (SaTML)},
+     year={2025},
+     url={https://arxiv.org/abs/2410.02541}
    }
 
--------------------------
-Built with DecentralizePy
--------------------------
 
-.. _`Epidemic Learning`: https://arxiv.org/abs/2310.01972/
-
-`Epidemic Learning`_
---------------------
-
-Tutorial
-    ``tutorial/EpidemicLearning``
-Source files
-    ``src/node/EpidemicLearning/``
-Cite
-    ``Martijn de Vos, Sadegh Farhadkhani, Rachid Guerraoui, Anne-Marie Kermarrec, Rafael Pires, and Rishi Sharma. Epidemic Learning: Boosting Decentralized Learning with Randomized Communication. In Thirty-seventh Conference on Neural Information Processing Systems (NeurIPS), 2023.``
-
-.. _`Get More for Less in Decentralized Learning Systems`: https://ieeexplore.ieee.org/document/10272515/
-
-`Get More for Less in Decentralized Learning Systems`_
-------------------------------------------------------
-
-Tutorial
-    ``tutorial/JWINS``
-Source files
-    ``src/sharing/JWINS/``
-Cite
-    ``Akash Dhasade, Anne-Marie Kermarrec, Rafael Pires, Rishi Sharma, Jeffrey Wigger, and Milos Vujasinovic. Get More for Less in Decentralized Learning Systems. In IEEE 43rd International Conference on Distributed Computing Systems (ICDCS), 2023.``
-
-
-------------
-Contributing
-------------
-
-* ``isort`` and ``black`` are installed along with the package for code linting.
-* While in the root directory of the repository, before committing the changes, please run ::
-
-    black .
-    isort .
 
 -------
-Modules
+License
 -------
 
-Following are the modules of decentralizepy:
-
-Node
-----
-* The Manager. Optimizations at process level.
-
-Dataset
--------
-* Static
-
-Training
---------
-* Heterogeneity. How much do I want to work?
-
-Graph
------
-* Static. Who are my neighbours? Topologies.
-
-Mapping
--------
-* Naming. The globally unique ids of the ``processes <-> machine_id, local_rank``
-
-Sharing
--------
-* Leverage Redundancy. Privacy. Optimizations in model and data sharing.
-
-Communication
--------------
-* IPC/Network level. Compression. Privacy. Reliability
-
-Model
------
-* Learning Model
+This project is licensed under the MIT License. See the LICENSE file for more details.
