@@ -106,9 +106,14 @@ class TrainingIDCA(Training):
         if self.explore_models and random.uniform(0, 1) < treshold:
             # chosing a random model
             self.current_model_idx = random.randint(0, len(self.models) - 1)
-            trainset_ori = dataset.get_trainset(self.batch_size, self.shuffle)  # all models eval on same samples
+            trainset_ori = dataset.get_trainset(
+                self.batch_size, self.shuffle
+            )  # all models eval on same samples
             trainsets = tee(trainset_ori, len(self.models))  # generator copy
-            self.models_losses = [self.eval_loss(model, trainset) for model, trainset in zip(self.models, trainsets)]
+            self.models_losses = [
+                self.eval_loss(model, trainset)
+                for model, trainset in zip(self.models, trainsets)
+            ]
             self.current_model_loss = self.models_losses[self.current_model_idx]
             self.current_model = self.models[self.current_model_idx]
             self.current_model_is_best = False
@@ -124,7 +129,11 @@ class TrainingIDCA(Training):
             self.leak_model(a)
 
         # reset the optimizer to match the current model parameters
-        self.reset_optimizer(self.optimizer_class(self.current_model.parameters(), **self.optimizer_params))
+        self.reset_optimizer(
+            self.optimizer_class(
+                self.current_model.parameters(), **self.optimizer_params
+            )
+        )
 
         self.current_model.train()  # set the current model to train mode
 
@@ -154,7 +163,9 @@ class TrainingIDCA(Training):
             batch_size = self.batch_size
         # model_choice_batch_size = 32
         # trainset_ori = dataset.get_trainset(model_choice_batch_size, self.shuffle)  # all models eval on same samples
-        trainset_ori = dataset.get_trainset(batch_size, self.shuffle)  # all models eval on same samples
+        trainset_ori = dataset.get_trainset(
+            batch_size, self.shuffle
+        )  # all models eval on same samples
         # trainset_ori = dataset.get_validationset(self.batch_size, self.shuffle)  # all models eval on same samples
         # logging.debug(f"using validation set of size {len(trainset_ori)}")
 
@@ -162,7 +173,9 @@ class TrainingIDCA(Training):
         # trainsets = tee(trainset_ori, len(self.models))  # generator copy
         # self.models_losses = [self.eval_loss(model, trainset) for model, trainset in zip(self.models, trainsets)]
 
-        self.models_losses = [self.eval_loss(model, trainset_ori) for model in self.models]
+        self.models_losses = [
+            self.eval_loss(model, trainset_ori) for model in self.models
+        ]
 
         self.current_model_loss = min(self.models_losses)
         self.current_model_idx = self.models_losses.index(self.current_model_loss)
@@ -174,7 +187,9 @@ class TrainingIDCA(Training):
         softmax = torch.nn.Softmax(dim=0)
         with torch.no_grad():
             # a-scaled softmax
-            max_weight = torch.max(softmax(-torch.tensor(self.models_losses) * a)).item()
+            max_weight = torch.max(
+                softmax(-torch.tensor(self.models_losses) * a)
+            ).item()
             old_models = [copy.deepcopy(model) for model in self.models]
 
             for j, model in enumerate(self.models):
@@ -185,9 +200,13 @@ class TrainingIDCA(Training):
                     old_state_dict = old_model.state_dict()
                     for key in old_state_dict:
                         if key in new_state_dict:
-                            new_state_dict[key] += weights[i] * old_state_dict[key].detach().clone()
+                            new_state_dict[key] += (
+                                weights[i] * old_state_dict[key].detach().clone()
+                            )
                         else:
-                            new_state_dict[key] = weights[i] * old_state_dict[key].detach().clone()
+                            new_state_dict[key] = (
+                                weights[i] * old_state_dict[key].detach().clone()
+                            )
 
                 model.load_state_dict(new_state_dict)
 

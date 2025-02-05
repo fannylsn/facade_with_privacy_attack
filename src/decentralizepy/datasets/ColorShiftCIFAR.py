@@ -1,16 +1,17 @@
 import logging
 from typing import List
-import torchvision
-from torchvision.transforms import Compose, ToTensor, Normalize, Lambda
+
 import torch
+import torchvision
 from PIL import ImageEnhance
+from torch import nn
+from torch.nn import functional as F
+from torchvision.transforms import Compose, Lambda, Normalize, ToTensor
+
 from decentralizepy.datasets.DatasetClustered import DatasetClustered
 from decentralizepy.datasets.Partitioner import DataPartitioner
 from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.models.Model import Model
-
-from torch import nn
-from torch.nn import functional as F
 
 NUM_CLASSES = 10
 CLASSES = {
@@ -25,6 +26,7 @@ CLASSES = {
     8: "ship",
     9: "truck",
 }
+
 
 class ColorShiftCIFAR(DatasetClustered):
     """
@@ -126,7 +128,9 @@ class ColorShiftCIFAR(DatasetClustered):
                 assignments.append("grayscale")
             else:  # Cycle through transformations for additional clusters
                 transformation_types = ["none", "sepia", "high_saturation", "grayscale"]
-                assignments.append(transformation_types[cluster_id % len(transformation_types)])
+                assignments.append(
+                    transformation_types[cluster_id % len(transformation_types)]
+                )
         return assignments
 
     def get_color_transform(self):
@@ -142,7 +146,9 @@ class ColorShiftCIFAR(DatasetClustered):
         if color_config == "none":
             return Lambda(lambda x: x)  # Identity transform
         elif color_config == "grayscale":
-            return Lambda(lambda x: x.mean(dim=0, keepdim=True).expand_as(x))  # Convert to grayscale
+            return Lambda(
+                lambda x: x.mean(dim=0, keepdim=True).expand_as(x)
+            )  # Convert to grayscale
         elif color_config == "sepia":
             return Lambda(self._apply_sepia)
         elif color_config == "high_saturation":
@@ -198,10 +204,12 @@ class ColorShiftCIFAR(DatasetClustered):
         -------
         torchvision.transforms.Compose
         """
-        base_transforms = Compose([
-            ToTensor(),
-            Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ])
+        base_transforms = Compose(
+            [
+                ToTensor(),
+                Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ]
+        )
         return Compose([base_transforms, self.get_color_transform()])
 
     def get_dataset_object(self, train=True):
@@ -253,7 +261,9 @@ class ColorShiftCIFAR(DatasetClustered):
         )
         cluster_data = self.cluster_data_partitioner.use(self.cluster)
 
-        data_sizes = [size / sum(self.sizes[self.cluster]) for size in self.sizes[self.cluster]]
+        data_sizes = [
+            size / sum(self.sizes[self.cluster]) for size in self.sizes[self.cluster]
+        ]
         self.data_partitioner = DataPartitioner(
             cluster_data, sizes=data_sizes, seed=self.random_seed
         )
@@ -277,10 +287,8 @@ class ColorShiftCIFAR(DatasetClustered):
                 generator=torch.Generator().manual_seed(self.random_seed),
             )
             logging.info(f"The validation set has {len(self.validationset)} samples.")
-        
+
         logging.info(f"The test set has {len(self.testset)} samples.")
-
-
 
 
 class LeNet(Model):
@@ -404,7 +412,9 @@ class LeNet(Model):
             for name, param in self.named_parameters():
                 if name not in self.current_head:
                     param.copy_(shared_layers.pop(0))
-        assert len(shared_layers) == 0, "The shared_layers list should be empty after setting."
+        assert (
+            len(shared_layers) == 0
+        ), "The shared_layers list should be empty after setting."
 
     def freeze_body(self):
         """Freeze the body of the network."""

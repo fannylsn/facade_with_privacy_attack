@@ -94,7 +94,9 @@ class RotatedMNIST(RotatedDataset):
 
     def get_dataset_object(self, train: bool = True) -> torch.utils.data.Dataset:
         """Get the dataset object from torchvision or the filesystem."""
-        dataset = torchvision.datasets.MNIST(root=self.train_dir, train=train, download=True, transform=self.transform)
+        dataset = torchvision.datasets.MNIST(
+            root=self.train_dir, train=train, download=True, transform=self.transform
+        )
         return dataset
 
 

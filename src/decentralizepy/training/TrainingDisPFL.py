@@ -133,7 +133,9 @@ class TrainingDisPFL(Training):
     def get_model_params(self):
         return copy.deepcopy(self.model.cpu().state_dict())
 
-    def calculate_sparsities(self, params, tabu=[], distribution="ERK", sparse=0.5, erk_power_scale=1.0):
+    def calculate_sparsities(
+        self, params, tabu=[], distribution="ERK", sparse=0.5, erk_power_scale=1.0
+    ):
         """???
 
         Args:

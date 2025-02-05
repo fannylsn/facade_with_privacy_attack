@@ -142,7 +142,9 @@ class LabelShiftDataset(DatasetClustered):
             # kshard_sizes = [sum(fracs) / self.number_of_clusters for fracs in self.sizes]
             kshard_sizes = [1.0 / self.number_of_clusters] * self.number_of_clusters
             # CHECK sizes
-            self.data_partitioner = KShardDataPartitioner(all_trainset, kshard_sizes, shards=1, seed=self.random_seed)
+            self.data_partitioner = KShardDataPartitioner(
+                all_trainset, kshard_sizes, shards=1, seed=self.random_seed
+            )
 
         elif self.partition_niid == "animals_and_vehicules":
             raise NotImplementedError
@@ -153,7 +155,9 @@ class LabelShiftDataset(DatasetClustered):
         cluster_data = self.data_partitioner.use(self.cluster)
         logging.debug(f"cluster {self.cluster} has {len(cluster_data)} samples")
         self.cluster_distribution = self.compute_cluster_ditribution(cluster_data)
-        logging.debug(f"adapting sizes for cluster {self.cluster} with sizes {self.sizes[self.cluster]}")
+        logging.debug(
+            f"adapting sizes for cluster {self.cluster} with sizes {self.sizes[self.cluster]}"
+        )
         # adapted_sizes = [self.cluster * frac for frac in self.sizes[self.cluster]]
         # logging.debug(f"adapted sizes: {adapted_sizes}")
         self.data_sub_partitioner = DataPartitioner(
@@ -193,7 +197,10 @@ class LabelShiftDataset(DatasetClustered):
         cluster_distribution = {key: 0 for key in range(self.num_classes)}
         for _, y in cluster_data:
             cluster_distribution[y] += 1
-        cluster_distribution = {key: value / len(cluster_data) for key, value in cluster_distribution.items()}
+        cluster_distribution = {
+            key: value / len(cluster_data)
+            for key, value in cluster_distribution.items()
+        }
         return cluster_distribution
 
     def load_testset(self):
@@ -205,7 +212,9 @@ class LabelShiftDataset(DatasetClustered):
         testset = self.get_dataset_object(train=False)
         # not constant size for dirichlet -> need to scale according to train repartition
         new_idx = self.apply_distribution(
-            testset, self.cluster_distribution, len(testset) * len(self.trainset) // self.orig_trainset_len
+            testset,
+            self.cluster_distribution,
+            len(testset) * len(self.trainset) // self.orig_trainset_len,
         )
         testset = Partition(testset, new_idx)
         # try to overfit a small part (sanity check) !!

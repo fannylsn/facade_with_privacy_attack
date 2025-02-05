@@ -192,7 +192,9 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             files = os.listdir(mf_path)
             files = [f for f in files if f.endswith("_results.json")]
             # files = [f"{machine_folder[-1]}_{f}" for f in files]
-            files = [f for f in files if not f.startswith("-1")]  # remove server in IFCA
+            files = [
+                f for f in files if not f.startswith("-1")
+            ]  # remove server in IFCA
             for f in files:
                 filepath = os.path.join(mf_path, f)
                 with open(filepath, "r") as inf:
@@ -253,7 +255,9 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         plt.figure(111)
         final_data = get_per_cluster_stats(results, metric="train_loss")
         plt.ylim(0, 2)
-        per_cluster_plot(final_data, "Training Loss per cluster", "lower right", exp=config)
+        per_cluster_plot(
+            final_data, "Training Loss per cluster", "lower right", exp=config
+        )
         plt.savefig(os.path.join(folder_path, "train_loss_clust.png"), dpi=300)
 
         plt.figure(11)
@@ -290,7 +294,9 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
         plt.figure(212)
         final_data = get_per_cluster_stats(results, metric="test_loss")
-        per_cluster_plot(final_data, "Testing Loss per cluster", "lower right", exp=config)
+        per_cluster_plot(
+            final_data, "Testing Loss per cluster", "lower right", exp=config
+        )
         plt.savefig(os.path.join(folder_path, "test_loss_clust.png"), dpi=300)
 
         plt.figure(12)
@@ -327,7 +333,9 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
         plt.figure(223)
         final_data = get_per_cluster_stats(results, metric="test_acc")
-        per_cluster_plot(final_data, "Testing accuracy per cluster", "lower right", exp=config)
+        per_cluster_plot(
+            final_data, "Testing accuracy per cluster", "lower right", exp=config
+        )
         plt.savefig(os.path.join(folder_path, "test_acc_clust.png"), dpi=300)
 
         plt.figure(224)
@@ -386,7 +394,9 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         # per cluster
         plt.figure(2201)
         final_data = get_per_cluster_stats(results, metric="validation_acc")
-        per_cluster_plot(final_data, "Validation accuracy per cluster", "lower right", exp=config)
+        per_cluster_plot(
+            final_data, "Validation accuracy per cluster", "lower right", exp=config
+        )
         plt.savefig(os.path.join(folder_path, "val_acc_clust.png"), dpi=300)
 
         dict_ = {}
@@ -485,12 +495,19 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             plot_cluster_variation(subdir_path, results)
 
         # faireness
-        if "per_sample_pred_test" in results[0].keys() and results[0]["per_sample_pred_test"]:
+        if (
+            "per_sample_pred_test" in results[0].keys()
+            and results[0]["per_sample_pred_test"]
+        ):
             for res in results:
                 first_key = list(res["per_sample_pred_test"].keys())[0]
                 if not isinstance(res["per_sample_pred_test"][first_key], list):
-                    res["per_sample_pred_test"] = {k: json.loads(v) for k, v in res["per_sample_pred_test"].items()}
-                res["per_sample_true_test"] = {k: json.loads(v) for k, v in res["per_sample_true_test"].items()}
+                    res["per_sample_pred_test"] = {
+                        k: json.loads(v) for k, v in res["per_sample_pred_test"].items()
+                    }
+                res["per_sample_true_test"] = {
+                    k: json.loads(v) for k, v in res["per_sample_true_test"].items()
+                }
             per_class_rates, per_cluster_rates = compute_rates(results)
             if len(per_class_rates) > 1:
                 plt.figure(40)
@@ -500,7 +517,11 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
 
 def plot_cluster_model_evolution(folder_path, results):
-    data = [(x["cluster_assigned"], int(k), v) for x in results for k, v in x["test_best_model_idx"].items()]
+    data = [
+        (x["cluster_assigned"], int(k), v)
+        for x in results
+        for k, v in x["test_best_model_idx"].items()
+    ]
     clusters = set([x[0] for x in data])
     models = set([x[2] for x in data])
     max_iter = max([el[1] for el in data])
@@ -540,12 +561,21 @@ def plot_cluster_model_evolution(folder_path, results):
 
 
 def plot_final_cluster_model_attribution(folder_path, results):
-    max_iter = max([int(iter) for x in results for iter in x["test_best_model_idx"].keys()])
+    max_iter = max(
+        [int(iter) for x in results for iter in x["test_best_model_idx"].keys()]
+    )
 
-    data = [(x["cluster_assigned"], x["test_best_model_idx"][str(max_iter)]) for x in results]
+    data = [
+        (x["cluster_assigned"], x["test_best_model_idx"][str(max_iter)])
+        for x in results
+    ]
     df = pd.DataFrame(data, columns=["Cluster Assigned", "Best Model"])
-    heatmap_data = df.groupby(["Cluster Assigned", "Best Model"]).size().reset_index(name="Count")
-    heatmap_matrix = heatmap_data.pivot(index="Cluster Assigned", columns="Best Model", values="Count").fillna(0)
+    heatmap_data = (
+        df.groupby(["Cluster Assigned", "Best Model"]).size().reset_index(name="Count")
+    )
+    heatmap_matrix = heatmap_data.pivot(
+        index="Cluster Assigned", columns="Best Model", values="Count"
+    ).fillna(0)
     sns.heatmap(heatmap_matrix, annot=True, fmt="g", cmap="YlGnBu")
     plt.title("Heatmap of Data Distribution")
     plt.savefig(os.path.join(folder_path, "cluster_model_distribution.png"), dpi=300)

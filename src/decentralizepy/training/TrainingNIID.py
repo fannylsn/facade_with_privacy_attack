@@ -87,7 +87,9 @@ class TrainingNIID(Training):
                 per_sample_loss.extend(losses.tolist())
         return per_sample_loss
 
-    def eval_loss_on_given_model(self, model: Model, trainset: torch.utils.data.DataLoader):
+    def eval_loss_on_given_model(
+        self, model: Model, trainset: torch.utils.data.DataLoader
+    ):
         """
         Evaluate the loss on the training set on the given model
 

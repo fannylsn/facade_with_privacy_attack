@@ -91,7 +91,9 @@ class RotatedImageNette(RotatedDataset):
                 torchvision.transforms.Resize(CROP_SIZE),
                 torchvision.transforms.CenterCrop(CROP_SIZE),
                 torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                torchvision.transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
                 self.get_rotation_transform(),
                 # self.get_color_transform(),
             ]
@@ -258,7 +260,9 @@ class LeNet(Model):
             for name, param in self.named_parameters():
                 if name not in self.current_head:
                     param.copy_(shared_layers.pop(0))
-        assert len(shared_layers) == 0, "The shared_layers list should be empty after setting."
+        assert (
+            len(shared_layers) == 0
+        ), "The shared_layers list should be empty after setting."
 
     @classmethod
     def set_share_core(cls):
@@ -333,9 +337,13 @@ class BasicBlock(nn.Module):
 
     def __init__(self, in_planes, planes, stride=1):
         super(BasicBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(
+            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
+        )
         self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(
+            planes, planes, kernel_size=3, stride=1, padding=1, bias=False
+        )
         self.bn2 = nn.BatchNorm2d(planes)
 
         self.shortcut = nn.Sequential()
@@ -427,7 +435,9 @@ class ResNet18(Model):
         super().__init__()
         pretrained = False
         if pretrained:
-            self.resnet = resnet18(num_classes=num_classes, weights=ResNet18_Weights.DEFAULT)
+            self.resnet = resnet18(
+                num_classes=num_classes, weights=ResNet18_Weights.DEFAULT
+            )
         else:
             self.resnet = resnet18(num_classes=num_classes)
 

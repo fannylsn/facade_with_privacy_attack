@@ -70,7 +70,17 @@ class GraphOrchestratorDAC(PeerSamplerDynamic):
         nodeConfigs = config["NODE"]
         self.graph_degree = nodeConfigs["graph_degree"]
 
-        self.instantiate(rank, machine_id, mapping, graph, config, iterations, log_dir, log_level, *args)
+        self.instantiate(
+            rank,
+            machine_id,
+            mapping,
+            graph,
+            config,
+            iterations,
+            log_dir,
+            log_level,
+            *args,
+        )
         self.graphs: List[DirectedGraph] = [DirectedGraph(self.graph.n_procs)]
         self.run()
 
@@ -154,14 +164,18 @@ class GraphOrchestratorDAC(PeerSamplerDynamic):
                     raise ValueError("Iteration mismatch")
 
                 self.received_counter += 1
-                self.graphs[self.iteration].__update_incomming_edges__(sender, data["SEND_NEIGHBORS"])
+                self.graphs[self.iteration].__update_incomming_edges__(
+                    sender, data["SEND_NEIGHBORS"]
+                )
 
             if self.received_counter == len(self.my_neighbors):
                 # graph is full
                 for neighbor in self.my_neighbors:
                     logging.debug("Sending neighbors to {}".format(neighbor))
                     resp = {
-                        "NEIGHBORS": self.graphs[self.iteration].outgoing_edges(neighbor),
+                        "NEIGHBORS": self.graphs[self.iteration].outgoing_edges(
+                            neighbor
+                        ),
                         "CHANNEL": "PEERS",
                     }
 

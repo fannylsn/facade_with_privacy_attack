@@ -62,7 +62,12 @@ def assign_cte(path):
         }
         NUM_NODES = 16
         EVAL = "val"
-    NODE_TYPES = ["DEPRL", "DAC", "EL", "FACADE (ours)"]  # , "DPSGD_5" "IFCA_RESTARTS", "IFCA"
+    NODE_TYPES = [
+        "DEPRL",
+        "DAC",
+        "EL",
+        "FACADE (ours)",
+    ]  # , "DPSGD_5" "IFCA_RESTARTS", "IFCA"
     ACCRONYM = {
         "idca": "FACADE (ours)",
         # "ifca_restarts": "IFCA_RESTARTS",
@@ -120,14 +125,21 @@ def plot_results(parent_folder_path, data_machine="machine0", data_node=0):
         multi_model[node_type] = has_multi_model
         exp_subdirs[node_type] = subdir
 
-    exp_subdirs = OrderedDict((key, exp_subdirs[key]) for key in NODE_TYPES if key in exp_subdirs)
-    all_exp_results = OrderedDict((key, all_exp_results[key]) for key in NODE_TYPES if key in all_exp_results)
+    exp_subdirs = OrderedDict(
+        (key, exp_subdirs[key]) for key in NODE_TYPES if key in exp_subdirs
+    )
+    all_exp_results = OrderedDict(
+        (key, all_exp_results[key]) for key in NODE_TYPES if key in all_exp_results
+    )
 
     # clean in case of missing data
     common_configs = set(all_exp_results[next(iter(all_exp_results))].keys())
     for exp in all_exp_results.values():
         common_configs &= set(exp.keys())
-    all_exp_results = {k: {kk: vv for kk, vv in v.items() if kk in common_configs} for k, v in all_exp_results.items()}
+    all_exp_results = {
+        k: {kk: vv for kk, vv in v.items() if kk in common_configs}
+        for k, v in all_exp_results.items()
+    }
     # compute and plot fair metrics
 
     # UNCOMMENT !!!
@@ -138,21 +150,37 @@ def plot_results(parent_folder_path, data_machine="machine0", data_node=0):
     # plot_all_accs(all_exp_results, parent_folder_path)
 
     # plotting across iterations
-    fig_acc, axs_acc = plt.subplots(len(common_configs), 1, figsize=(10, 1 + 4 * len(CONFIGS)))
+    fig_acc, axs_acc = plt.subplots(
+        len(common_configs), 1, figsize=(10, 1 + 4 * len(CONFIGS))
+    )
     fig_acc.suptitle("Accuracy for each experiment")
-    fig_acc_clust, axs_acc_clust = plt.subplots(len(common_configs), 1, figsize=(10, 1 + 4 * len(CONFIGS)))
+    fig_acc_clust, axs_acc_clust = plt.subplots(
+        len(common_configs), 1, figsize=(10, 1 + 4 * len(CONFIGS))
+    )
     fig_acc_clust.suptitle("Accuracy detailed by cluster")
-    fig_acc_sep, axs_acc_sep = plt.subplots(2, len(common_configs), figsize=(1 + 4 * len(CONFIGS), 10))
-    fig_acc_sep.suptitle(f"Mean accuracy for each cluster\n{NODE}, {NUM_NODES} nodes\n", fontsize=30)
+    fig_acc_sep, axs_acc_sep = plt.subplots(
+        2, len(common_configs), figsize=(1 + 4 * len(CONFIGS), 10)
+    )
+    fig_acc_sep.suptitle(
+        f"Mean accuracy for each cluster\n{NODE}, {NUM_NODES} nodes\n", fontsize=30
+    )
 
-    fig_fair_acc, axs_fair_acc = plt.subplots(1, len(common_configs), figsize=(2 + 5 * len(CONFIGS), 7))
-    fig_fair_acc.suptitle(f"Fair accuracy for each experiment\n{NODE}, {NUM_NODES} nodes")
+    fig_fair_acc, axs_fair_acc = plt.subplots(
+        1, len(common_configs), figsize=(2 + 5 * len(CONFIGS), 7)
+    )
+    fig_fair_acc.suptitle(
+        f"Fair accuracy for each experiment\n{NODE}, {NUM_NODES} nodes"
+    )
 
-    fig_acc_bytes, axs_acc_bytes = plt.subplots(len(common_configs), 1, figsize=(10, 1 + 4 * len(CONFIGS)), sharex=True)
+    fig_acc_bytes, axs_acc_bytes = plt.subplots(
+        len(common_configs), 1, figsize=(10, 1 + 4 * len(CONFIGS)), sharex=True
+    )
     # fig_acc_bytes, axs_acc_bytes = plt.subplots(1, 1, figsize=(10, 10), sharex=True)
     for ax in axs_acc_bytes:
         ax.tick_params(axis="x", which="both", bottom=True, top=True, labelbottom=True)
-    fig_acc_bytes.suptitle(f"Accuracy vs. data transferred (Bytes)\n{NODE}, {NUM_NODES} nodes")
+    fig_acc_bytes.suptitle(
+        f"Accuracy vs. data transferred (Bytes)\n{NODE}, {NUM_NODES} nodes"
+    )
 
     rows_list = []
     for exp, all_results in all_exp_results.items():
@@ -162,7 +190,9 @@ def plot_results(parent_folder_path, data_machine="machine0", data_node=0):
 
         # pandas df
         for (config, data), data_all, data_fair in zip(
-            acc_per_config_per_cluster.items(), acc_per_config.values(), fair_acc_per_config.values()
+            acc_per_config_per_cluster.items(),
+            acc_per_config.values(),
+            fair_acc_per_config.values(),
         ):
             for cluster, (iters, values, std) in data.items():
                 rows_list.append(
@@ -204,24 +234,44 @@ def plot_results(parent_folder_path, data_machine="machine0", data_node=0):
         plot_acc_per_exp(parent_folder_path, acc_per_config, exp, axs_acc)
         plt.close()
         plt.figure(fig_acc_clust)
-        plot_acc_per_cluster_per_exp(parent_folder_path, acc_per_config_per_cluster, exp, axs_acc_clust)
+        plot_acc_per_cluster_per_exp(
+            parent_folder_path, acc_per_config_per_cluster, exp, axs_acc_clust
+        )
         plt.close()
         plt.figure(fig_acc_sep)
-        plot_acc_per_per_exp_separated(parent_folder_path, acc_per_config_per_cluster, exp, axs_acc_sep, majority=True)
-        plot_acc_per_per_exp_separated(parent_folder_path, acc_per_config_per_cluster, exp, axs_acc_sep, majority=False)
+        plot_acc_per_per_exp_separated(
+            parent_folder_path,
+            acc_per_config_per_cluster,
+            exp,
+            axs_acc_sep,
+            majority=True,
+        )
+        plot_acc_per_per_exp_separated(
+            parent_folder_path,
+            acc_per_config_per_cluster,
+            exp,
+            axs_acc_sep,
+            majority=False,
+        )
         plt.close()
 
         plt.figure(fig_fair_acc)
-        plot_fair_acc_per_exp(parent_folder_path, fair_acc_per_config, exp, axs_fair_acc)
+        plot_fair_acc_per_exp(
+            parent_folder_path, fair_acc_per_config, exp, axs_fair_acc
+        )
         plt.close()
 
         plt.figure(fig_acc_bytes)
-        plot_acc_per_bytes(parent_folder_path, acc_per_bytes_per_config, exp, axs_acc_bytes)
+        plot_acc_per_bytes(
+            parent_folder_path, acc_per_bytes_per_config, exp, axs_acc_bytes
+        )
         plt.close()
 
         for i, (config_folder, data) in enumerate(all_results.items()):
             for j, (seed_folder, seed_data) in enumerate(data.items()):
-                exp_path = os.path.join(parent_folder_path, exp_subdirs[exp], config_folder, seed_folder)
+                exp_path = os.path.join(
+                    parent_folder_path, exp_subdirs[exp], config_folder, seed_folder
+                )
                 if multi_model[exp]:
                     plot_cluster_model_evolution(exp_path, seed_data)
                     plot_cluster_variation(exp_path, seed_data)
@@ -270,7 +320,9 @@ def get_data_from_exp(folder_path):
 
                 files = os.listdir(mf_path)
                 files = [f for f in files if f.endswith("_results.json")]
-                files = [f for f in files if not f.startswith("-1")]  # remove server in IFCA
+                files = [
+                    f for f in files if not f.startswith("-1")
+                ]  # remove server in IFCA
                 for f in files:
                     filepath = os.path.join(mf_path, f)
                     with open(filepath, "r") as inf:
@@ -284,8 +336,20 @@ def get_data_from_exp(folder_path):
 
 
 def get_fair_metrics(all_exp_results):
-    all_configs = sorted(list(set([config for exp_data in all_exp_results.values() for config in exp_data.keys()])))
-    all_test_metrics = {m: {config: {} for config in all_configs} for m in METRIC_FUNCS.keys()}
+    all_configs = sorted(
+        list(
+            set(
+                [
+                    config
+                    for exp_data in all_exp_results.values()
+                    for config in exp_data.keys()
+                ]
+            )
+        )
+    )
+    all_test_metrics = {
+        m: {config: {} for config in all_configs} for m in METRIC_FUNCS.keys()
+    }
 
     for node_type, node_data in all_exp_results.items():
         for config, data in node_data.items():
@@ -293,10 +357,12 @@ def get_fair_metrics(all_exp_results):
             for results in data.values():
                 for res in results:
                     res["per_sample_pred_test"] = {
-                        k: (v if isinstance(v, list) else json.loads(v)) for k, v in res["per_sample_pred_test"].items()
+                        k: (v if isinstance(v, list) else json.loads(v))
+                        for k, v in res["per_sample_pred_test"].items()
                     }
                     res["per_sample_true_test"] = {
-                        k: (v if isinstance(v, list) else json.loads(v)) for k, v in res["per_sample_true_test"].items()
+                        k: (v if isinstance(v, list) else json.loads(v))
+                        for k, v in res["per_sample_true_test"].items()
                     }
             for metric in METRIC_FUNCS.keys():
                 temp_metric = []
@@ -307,9 +373,16 @@ def get_fair_metrics(all_exp_results):
                     per_class_rates, per_cluster_rates = compute_rates(results)
                     if per_class_rates is None:
                         continue
-                    temp_metric.append(METRIC_FUNCS[metric](per_cluster_rates, per_class_rates))  # call to correct func
-                print(f"Node type: {node_type}, config: {config}, metric: {metric} : {np.mean(temp_metric)}")
-                all_test_metrics[metric][config][node_type] = {"mean": np.mean(temp_metric), "std": np.std(temp_metric)}
+                    temp_metric.append(
+                        METRIC_FUNCS[metric](per_cluster_rates, per_class_rates)
+                    )  # call to correct func
+                print(
+                    f"Node type: {node_type}, config: {config}, metric: {metric} : {np.mean(temp_metric)}"
+                )
+                all_test_metrics[metric][config][node_type] = {
+                    "mean": np.mean(temp_metric),
+                    "std": np.std(temp_metric),
+                }
     return all_test_metrics
 
 
@@ -318,11 +391,13 @@ def plot_fair_metric(all_test_metrics, out_folder):
         configs = list(all_test_metrics[metric].keys())
         node_types = list(all_test_metrics[metric][configs[0]].keys())
         values = [
-            [all_test_metrics[metric][config][node_type]["mean"] for config in configs] for node_type in node_types
+            [all_test_metrics[metric][config][node_type]["mean"] for config in configs]
+            for node_type in node_types
         ]
 
         std_dev = [
-            [all_test_metrics[metric][config][node_type]["std"] for config in configs] for node_type in node_types
+            [all_test_metrics[metric][config][node_type]["std"] for config in configs]
+            for node_type in node_types
         ]
 
         # contine
@@ -336,7 +411,16 @@ def plot_fair_metric(all_test_metrics, out_folder):
         plt.close()
         plt.figure(figsize=(10, 7))
         for node_type, vals, std in zip(node_types, values, std_dev):
-            plt.errorbar(index, vals, std, fmt="o", linewidth=2, capsize=6, label=node_type, color=COLORS[node_type])
+            plt.errorbar(
+                index,
+                vals,
+                std,
+                fmt="o",
+                linewidth=2,
+                capsize=6,
+                label=node_type,
+                color=COLORS[node_type],
+            )
 
         plt.xlabel("Ratio of majority to minority (clusters A:B)")
         plt.ylabel(METRIC_LABEL[metric])
@@ -345,8 +429,12 @@ def plot_fair_metric(all_test_metrics, out_folder):
         plt.legend(loc="upper left")
 
         plt.tight_layout()
-        plt.savefig(os.path.join(out_folder, f"{metric}_per_node_type_per_config.pdf"), dpi=300)
-        plt.savefig(os.path.join(out_folder, f"{metric}_per_node_type_per_config.png"), dpi=300)
+        plt.savefig(
+            os.path.join(out_folder, f"{metric}_per_node_type_per_config.pdf"), dpi=300
+        )
+        plt.savefig(
+            os.path.join(out_folder, f"{metric}_per_node_type_per_config.png"), dpi=300
+        )
 
 
 def extract_acc_stats(all_results):
@@ -367,7 +455,9 @@ def extract_acc_stats(all_results):
             for x in seed_data:
                 per_clusters_acc[x["cluster_assigned"]].append(x[eval_column].values())
 
-            mean = [np.mean(x) for x in zip(*[x[eval_column].values() for x in seed_data])]
+            mean = [
+                np.mean(x) for x in zip(*[x[eval_column].values() for x in seed_data])
+            ]
             per_seed_acc_no_clust.append((iters, mean))
 
             for cluster, v in per_clusters_acc.items():
@@ -407,7 +497,9 @@ def get_fair_accuracy(acc_per_config_per_cluster):
         acc_sim = [100 - np.abs(x - y) for x, y in zip(values_0, values_1)]
         # fair_acc = [2 * ma * as_ / (ma + as_) for ma, as_ in zip(mean_acc, acc_sim)]
         alpha = 1 / 2
-        fair_acc = [alpha * ma + (1 - alpha) * as_ for ma, as_ in zip(mean_acc, acc_sim)]
+        fair_acc = [
+            alpha * ma + (1 - alpha) * as_ for ma, as_ in zip(mean_acc, acc_sim)
+        ]
         fair_acc_per_config[config] = (iters, fair_acc, [0] * len(iters))
     return fair_acc_per_config
 
@@ -420,7 +512,10 @@ def get_acc_by_bytes(all_results):
         for seed_data in data.values():
             # final_iter = max(int(k) for k in seed_data[0]["test_acc"].keys())
             iters = [k for k in seed_data[0]["test_acc"].keys()]
-            bytes = [[x["total_bytes"][it] for it in iters if it in x["total_bytes"]] for x in seed_data]
+            bytes = [
+                [x["total_bytes"][it] for it in iters if it in x["total_bytes"]]
+                for x in seed_data
+            ]
             acc = [x["test_acc"].values() for x in seed_data]
             mean_acc = [np.mean(x) for x in zip(*acc)]
             mean_bytes = [np.mean(x) for x in zip(*bytes)]
@@ -443,7 +538,11 @@ def plot_acc_per_exp(folder_path, all_test_accs, exp, axs):
             iters, values, std = data
             axs[i].plot(iters, values, label=f"{exp}", color=COLORS[exp])
             axs[i].fill_between(
-                iters, np.array(values) - np.array(std), np.array(values) + np.array(std), alpha=0.2, color=COLORS[exp]
+                iters,
+                np.array(values) - np.array(std),
+                np.array(values) + np.array(std),
+                alpha=0.2,
+                color=COLORS[exp],
             )
         print(CONFIGS)
         axs[i].set_title(f"Accuracy for {CONFIGS[config]}")
@@ -451,7 +550,9 @@ def plot_acc_per_exp(folder_path, all_test_accs, exp, axs):
         axs[i].yaxis.set_ticks(np.arange(0, 70 + 1, 10.0))
         if data:
             # axs[i].legend(loc="lower right")
-            axs[i].legend(loc="lower right", ncol=3, fancybox=True)  # bbox_to_anchor=(1.05, -0.05)
+            axs[i].legend(
+                loc="lower right", ncol=3, fancybox=True
+            )  # bbox_to_anchor=(1.05, -0.05)
     # set only last
     axs[i].set_xlabel("Communication rounds")
     plt.tight_layout()
@@ -466,13 +567,19 @@ def plot_fair_acc_per_exp(folder_path, all_test_accs, exp, axs):
             iters, values, std = data
             axs[i].plot(iters, values, label=f"{exp}", color=COLORS[exp])
             axs[i].fill_between(
-                iters, np.array(values) - np.array(std), np.array(values) + np.array(std), alpha=0.2, color=COLORS[exp]
+                iters,
+                np.array(values) - np.array(std),
+                np.array(values) + np.array(std),
+                alpha=0.2,
+                color=COLORS[exp],
             )
         axs[i].set_title(f"Fair accuracy for {CONFIGS[config]}")
         axs[i].yaxis.set_ticks(np.arange(0, 80 + 1, 20.0))
         if data:
             # axs[i].legend(loc="lower right")
-            axs[i].legend(loc="lower right", ncol=1, fancybox=True)  # bbox_to_anchor=(1.05, -0.05)
+            axs[i].legend(
+                loc="lower right", ncol=1, fancybox=True
+            )  # bbox_to_anchor=(1.05, -0.05)
         axs[i].set_xlabel("Communication rounds")
     axs[0].set_ylabel("Fair accuracy")
     plt.tight_layout()
@@ -488,14 +595,20 @@ def plot_acc_per_bytes(folder_path, all_test_accs, exp, axs):
             bytes = [x * 1e-9 for x in bytes]
             axs[i].plot(bytes, values, label=f"{exp}", color=COLORS[exp])
             axs[i].fill_between(
-                bytes, np.array(values) - np.array(std), np.array(values) + np.array(std), alpha=0.2, color=COLORS[exp]
+                bytes,
+                np.array(values) - np.array(std),
+                np.array(values) + np.array(std),
+                alpha=0.2,
+                color=COLORS[exp],
             )
         axs[i].set_title(f"Accuracy for {CONFIGS[config]}")
         axs[i].set_ylabel("Accuracy")
         axs[i].yaxis.set_ticks(np.arange(0, 80 + 1, 20.0))
         if data:
             # axs[i].legend(loc="lower right")
-            axs[i].legend(loc="lower right", ncol=2, fancybox=True)  # bbox_to_anchor=(1.05, -0.05)
+            axs[i].legend(
+                loc="lower right", ncol=2, fancybox=True
+            )  # bbox_to_anchor=(1.05, -0.05)
     # set only last
     axs[i].set_xlabel("Total bytes transfered (Gb)")
     plt.tight_layout()
@@ -508,16 +621,34 @@ def plot_acc_per_cluster_per_exp(folder_path, all_test_accs, exp, axs):
         for clust, cluster_data in data.items():
             iters, values, std = cluster_data
             if clust == 0:
-                axs[i].plot(iters, values, label=f"{exp}", color=COLORS[exp], linestyle=LINE_STYLES[clust])
+                axs[i].plot(
+                    iters,
+                    values,
+                    label=f"{exp}",
+                    color=COLORS[exp],
+                    linestyle=LINE_STYLES[clust],
+                )
             else:
-                axs[i].plot(iters, values, color=COLORS[exp], linestyle=LINE_STYLES[clust])
+                axs[i].plot(
+                    iters, values, color=COLORS[exp], linestyle=LINE_STYLES[clust]
+                )
             axs[i].fill_between(
-                iters, np.array(values) - np.array(std), np.array(values) + np.array(std), alpha=0.2, color=COLORS[exp]
+                iters,
+                np.array(values) - np.array(std),
+                np.array(values) + np.array(std),
+                alpha=0.2,
+                color=COLORS[exp],
             )
             # axs[i].errorbar(iters, values, std, label=f"Cluster {cluster}")
             if exp == NODE_TYPES[-1]:
                 # plot line type just once
-                axs[i].plot([], [], label=f"Cluster {clust}", color="k", linestyle=LINE_STYLES[clust])
+                axs[i].plot(
+                    [],
+                    [],
+                    label=f"Cluster {clust}",
+                    color="k",
+                    linestyle=LINE_STYLES[clust],
+                )
         axs[i].set_title(f"Accuracy for {CONFIGS[config]}")
         axs[i].set_ylabel("Accuracy")
         axs[i].yaxis.set_ticks(np.arange(0, 80 + 1, 20.0))
@@ -548,9 +679,19 @@ def plot_acc_per_per_exp_separated(folder_path, all_test_accs, exp, axs, majorit
             iters, values, std = cluster_data
             if clust != cur_cluster:
                 continue
-            axs[row, i].plot(iters, values, label=f"{exp}", color=COLORS[exp], linestyle=LINE_STYLES[clust])
+            axs[row, i].plot(
+                iters,
+                values,
+                label=f"{exp}",
+                color=COLORS[exp],
+                linestyle=LINE_STYLES[clust],
+            )
             axs[row, i].fill_between(
-                iters, np.array(values) - np.array(std), np.array(values) + np.array(std), alpha=0.2, color=COLORS[exp]
+                iters,
+                np.array(values) - np.array(std),
+                np.array(values) + np.array(std),
+                alpha=0.2,
+                color=COLORS[exp],
             )
         axs[row, i].set_title(f"{CONFIGS[config]}, {label}")
         axs[row, i].grid(True, color="gray", linestyle="-", linewidth=0.5)
@@ -582,7 +723,11 @@ def plot_settling_time(folder_path, all_results):
             total_variations = np.sum(np.array(variations), axis=0)
             # take idx + 1 beacause the ith variation ends at the i+1th iteration
             # second + 1 ??
-            settling_iter = idx[np.max(np.nonzero(total_variations)) + 1 + 1] if np.any(total_variations) else 0
+            settling_iter = (
+                idx[np.max(np.nonzero(total_variations)) + 1 + 1]
+                if np.any(total_variations)
+                else 0
+            )
 
             all_settling_times[config].append(settling_iter)
 
@@ -611,10 +756,26 @@ def compute_demo_parity(per_clust_rates, per_class_rates):
     clusters = list(per_clust_rates.keys())
     classes = list(range(len(per_class_rates[clusters[0]]["TP"])))
     for class_ in classes:
-        pos_preds_0 = per_class_rates[clusters[0]]["TP"][class_] + per_class_rates[clusters[0]]["FP"][class_]
-        tot_0 = np.sum([per_class_rates[clusters[0]][k][class_] for k in per_class_rates[clusters[0]].keys()])
-        pos_preds_1 = per_class_rates[clusters[1]]["TP"][class_] + per_class_rates[clusters[1]]["FP"][class_]
-        tot_1 = np.sum([per_class_rates[clusters[1]][k][class_] for k in per_class_rates[clusters[1]].keys()])
+        pos_preds_0 = (
+            per_class_rates[clusters[0]]["TP"][class_]
+            + per_class_rates[clusters[0]]["FP"][class_]
+        )
+        tot_0 = np.sum(
+            [
+                per_class_rates[clusters[0]][k][class_]
+                for k in per_class_rates[clusters[0]].keys()
+            ]
+        )
+        pos_preds_1 = (
+            per_class_rates[clusters[1]]["TP"][class_]
+            + per_class_rates[clusters[1]]["FP"][class_]
+        )
+        tot_1 = np.sum(
+            [
+                per_class_rates[clusters[1]][k][class_]
+                for k in per_class_rates[clusters[1]].keys()
+            ]
+        )
 
         demo_parity = abs(pos_preds_0 / tot_0 - pos_preds_1 / tot_1)
         tot_demo_par += demo_parity
@@ -627,10 +788,12 @@ def compute_equ_oppo(per_clust_rates, per_class_rates):
     classes = list(range(len(per_class_rates[clusters[0]]["TP"])))
     for class_ in classes:
         rec_0 = per_class_rates[clusters[0]]["TP"][class_] / (
-            per_class_rates[clusters[0]]["TP"][class_] + per_class_rates[clusters[0]]["FN"][class_]
+            per_class_rates[clusters[0]]["TP"][class_]
+            + per_class_rates[clusters[0]]["FN"][class_]
         )
         rec_1 = per_class_rates[clusters[1]]["TP"][class_] / (
-            per_class_rates[clusters[1]]["TP"][class_] + per_class_rates[clusters[1]]["FN"][class_]
+            per_class_rates[clusters[1]]["TP"][class_]
+            + per_class_rates[clusters[1]]["FN"][class_]
         )
 
         eq_oppo = abs(rec_0 - rec_1)
@@ -644,18 +807,22 @@ def compute_equalized_odds(per_clust_rates, per_class_rates):
     classes = list(range(len(per_class_rates[clusters[0]]["TP"])))
     for class_ in classes:
         rec_0 = per_class_rates[clusters[0]]["TP"][class_] / (
-            per_class_rates[clusters[0]]["TP"][class_] + per_class_rates[clusters[0]]["FN"][class_]
+            per_class_rates[clusters[0]]["TP"][class_]
+            + per_class_rates[clusters[0]]["FN"][class_]
         )
         rec_1 = per_class_rates[clusters[1]]["TP"][class_] / (
-            per_class_rates[clusters[1]]["TP"][class_] + per_class_rates[clusters[1]]["FN"][class_]
+            per_class_rates[clusters[1]]["TP"][class_]
+            + per_class_rates[clusters[1]]["FN"][class_]
         )
         eq_oppo = abs(rec_0 - rec_1)
 
         fpr_0 = per_class_rates[clusters[0]]["FP"][class_] / (
-            per_class_rates[clusters[0]]["TN"][class_] + per_class_rates[clusters[0]]["FP"][class_]
+            per_class_rates[clusters[0]]["TN"][class_]
+            + per_class_rates[clusters[0]]["FP"][class_]
         )
         fpr_1 = per_class_rates[clusters[1]]["FP"][class_] / (
-            per_class_rates[clusters[1]]["TN"][class_] + per_class_rates[clusters[1]]["FP"][class_]
+            per_class_rates[clusters[1]]["TN"][class_]
+            + per_class_rates[clusters[1]]["FP"][class_]
         )
         temp = abs(fpr_0 - fpr_1)
         tot_equ_odds += temp + eq_oppo
@@ -663,8 +830,16 @@ def compute_equalized_odds(per_clust_rates, per_class_rates):
     return tot_equ_odds / len(classes)
 
 
-METRIC_FUNCS = {"demo_parity": compute_demo_parity, "equ_oppo": compute_equ_oppo, "eq_odds": compute_equalized_odds}
-METRIC_LABEL = {"demo_parity": "Demographic parity", "equ_oppo": "Equality of opportunity", "eq_odds": "Equalized odds"}
+METRIC_FUNCS = {
+    "demo_parity": compute_demo_parity,
+    "equ_oppo": compute_equ_oppo,
+    "eq_odds": compute_equalized_odds,
+}
+METRIC_LABEL = {
+    "demo_parity": "Demographic parity",
+    "equ_oppo": "Equality of opportunity",
+    "eq_odds": "Equalized odds",
+}
 
 if __name__ == "__main__":
     if len(sys.argv) == 2:

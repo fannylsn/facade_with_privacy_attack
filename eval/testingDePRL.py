@@ -2,13 +2,14 @@ import logging
 from pathlib import Path
 from shutil import copy
 
+from localconfig import LocalConfig
+from torch import multiprocessing as mp
+
 from decentralizepy import utils
 from decentralizepy.graphs.Regular import Regular
 from decentralizepy.mappings.Linear import Linear
 from decentralizepy.node.DPSGDNodeDePRL import DPSGDNodeDePRL
 from decentralizepy.node.PeerSamplerDynamic import PeerSamplerDynamic
-from localconfig import LocalConfig
-from torch import multiprocessing as mp
 
 
 def read_ini(file_path):
@@ -45,13 +46,19 @@ if __name__ == "__main__":
     n_machines = args.machines
     procs_per_machine = args.procs_per_machine[0]
     # with peer sampler, this initial graph is never used (exept to get the number of nodes)
-    g = Regular(n_machines * procs_per_machine, my_config["NODE"]["graph_degree"], my_config["DATASET"]["random_seed"])
+    g = Regular(
+        n_machines * procs_per_machine,
+        my_config["NODE"]["graph_degree"],
+        my_config["DATASET"]["random_seed"],
+    )
     m_id = args.machine_id
 
     sm = args.server_machine
     sr = args.server_rank
 
-    l_mapping = Linear(n_machines, procs_per_machine, global_service_machine=sm, current_machine=m_id)
+    l_mapping = Linear(
+        n_machines, procs_per_machine, global_service_machine=sm, current_machine=m_id
+    )
 
     processes = []
     if sm == m_id:

@@ -3,14 +3,15 @@ import time
 from pathlib import Path
 from shutil import copy
 
+from localconfig import LocalConfig
+from torch import multiprocessing as mp
+
 from decentralizepy import utils
 from decentralizepy.mappings.Linear import Linear
 from decentralizepy.node.DPSGDNodeFederatedIFCA import DPSGDNodeFederatedIFCA
 from decentralizepy.node.FederatedParameterServerIFCA import (
     FederatedParameterServerIFCA,
 )
-from localconfig import LocalConfig
-from torch import multiprocessing as mp
 
 
 def read_ini(file_path):
@@ -114,5 +115,7 @@ if __name__ == "__main__":
 
         # new seed because of fail to settle
         time.sleep(10)
-        my_config["DATASET"]["random_seed"] = int(my_config["DATASET"]["random_seed"]) + 123456
+        my_config["DATASET"]["random_seed"] = (
+            int(my_config["DATASET"]["random_seed"]) + 123456
+        )
         print("Early restart, new seed is: ", my_config["DATASET"]["random_seed"])

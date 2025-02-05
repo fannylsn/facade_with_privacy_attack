@@ -2,12 +2,13 @@ import logging
 from pathlib import Path
 from shutil import copy
 
+from localconfig import LocalConfig
+from torch import multiprocessing as mp
+
 from decentralizepy import utils
 from decentralizepy.graphs.Graph import Graph
 from decentralizepy.mappings.Linear import Linear
 from decentralizepy.node.DPSGDNodeIDCA import DPSGDNodeIDCA
-from localconfig import LocalConfig
-from torch import multiprocessing as mp
 
 
 def read_ini(file_path):

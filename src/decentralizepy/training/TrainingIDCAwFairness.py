@@ -119,7 +119,9 @@ class TrainingIDCAwFairness(TrainingIDCA):
             else:
                 # mean of all models except idx
                 with torch.no_grad():
-                    all_other_models = [model for i, model in enumerate(self.models) if i != idx]
+                    all_other_models = [
+                        model for i, model in enumerate(self.models) if i != idx
+                    ]
                     model_other = loss.compute_other_model(all_other_models)
                     # set in loss
                     loss.set_model_other(model_other)
@@ -128,7 +130,9 @@ class TrainingIDCAwFairness(TrainingIDCA):
         if self.explore_models and random.uniform(0, 1) < treshold:
             # chosing a random model
             self.current_model_idx = random.randint(0, len(self.models) - 1)
-            trainset_ori = dataset.get_trainset(self.batch_size, self.shuffle)  # all models eval on same samples
+            trainset_ori = dataset.get_trainset(
+                self.batch_size, self.shuffle
+            )  # all models eval on same samples
             trainsets = tee(trainset_ori, len(self.models))  # generator copy
             # self.models_losses = [self.eval_loss(model, trainset) for model, trainset in zip(self.models, trainsets)]
             self.models_losses = []
@@ -154,7 +158,11 @@ class TrainingIDCAwFairness(TrainingIDCA):
         self.loss = self.losses[self.current_model_idx]
 
         # reset the optimizer to match the current model parameters
-        self.reset_optimizer(self.optimizer_class(self.current_model.parameters(), **self.optimizer_params))
+        self.reset_optimizer(
+            self.optimizer_class(
+                self.current_model.parameters(), **self.optimizer_params
+            )
+        )
 
         self.current_model.train()  # set the current model to train mode
         self.loss.train()  # set the loss to train mode
@@ -185,7 +193,9 @@ class TrainingIDCAwFairness(TrainingIDCA):
             treshold (float, optional): Treshold in [0, 1] to explore the space. If set to 0, no exploration is done.
         """
         # chosing the best model
-        trainset_ori = dataset.get_trainset(self.batch_size, self.shuffle)  # all models eval on same samples
+        trainset_ori = dataset.get_trainset(
+            self.batch_size, self.shuffle
+        )  # all models eval on same samples
         # trainset_ori = dataset.get_validationset(self.batch_size, self.shuffle)  # all models eval on same samples
         # logging.debug(f"using validation set of size {len(trainset_ori)}")
         trainsets = tee(trainset_ori, len(self.models))  # generator copy

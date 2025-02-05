@@ -2,13 +2,14 @@ import logging
 from pathlib import Path
 from shutil import copy
 
+from localconfig import LocalConfig
+from torch import multiprocessing as mp
+
 from decentralizepy import utils
 from decentralizepy.graphs.Regular import Regular
 from decentralizepy.mappings.Linear import Linear
 from decentralizepy.node.DPSGDNodeDisPFL import DPSGDNodeDisPFL
 from decentralizepy.node.GraphOrchestratorDisPFL import GraphOrchestratorDisPFL
-from localconfig import LocalConfig
-from torch import multiprocessing as mp
 
 
 def read_ini(file_path):
@@ -51,7 +52,9 @@ if __name__ == "__main__":
     sm = args.server_machine
     sr = args.server_rank
 
-    l_mapping = Linear(n_machines, procs_per_machine, global_service_machine=sm, current_machine=m_id)
+    l_mapping = Linear(
+        n_machines, procs_per_machine, global_service_machine=sm, current_machine=m_id
+    )
 
     processes = []
     if sm == m_id:

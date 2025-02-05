@@ -302,12 +302,16 @@ class FederatedParameterServerIFCA(Node):
 
         """
         dataset_module = importlib.import_module(dataset_configs["dataset_package"])
-        random_seed = dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
+        random_seed = (
+            dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
+        )
         torch.manual_seed(random_seed)
         np.random.seed(random_seed)
         # main seed, all nodes will receive those models
         self.model_class = getattr(dataset_module, dataset_configs["model_class"])
-        self.models = [self.model_class() for _ in range(dataset_configs["number_of_clusters"])]  # type: List[Model]
+        self.models = [
+            self.model_class() for _ in range(dataset_configs["number_of_clusters"])
+        ]  # type: List[Model]
 
     def init_sharing(self, sharing_configs):
         """
@@ -321,7 +325,9 @@ class FederatedParameterServerIFCA(Node):
         """
         sharing_package = importlib.import_module(sharing_configs["sharing_package"])
         self.sharing_class = getattr(sharing_package, sharing_configs["sharing_class"])
-        sharing_params = utils.remove_keys(sharing_configs, ["sharing_package", "sharing_class"])
+        sharing_params = utils.remove_keys(
+            sharing_configs, ["sharing_package", "sharing_class"]
+        )
         self.sharing = self.sharing_class(
             self.rank,
             self.machine_id,
@@ -365,7 +371,9 @@ class FederatedParameterServerIFCA(Node):
             logging.info("Disconnecting neighbors")
 
             for neighbor in self.my_neighbors:
-                self.communication.send(neighbor, {"BYE": self.uid, "CHANNEL": "WORKER_REQUEST"})
+                self.communication.send(
+                    neighbor, {"BYE": self.uid, "CHANNEL": "WORKER_REQUEST"}
+                )
                 self.barrier.remove(neighbor)
 
             self.sent_disconnections = True
@@ -478,7 +486,9 @@ class FederatedParameterServerIFCA(Node):
         if hasattr(self.communication, "total_meta"):
             results_dict["total_meta"][iteration + 1] = self.communication.total_meta
         if hasattr(self.communication, "total_data"):
-            results_dict["total_data_per_n"][iteration + 1] = self.communication.total_data
+            results_dict["total_data_per_n"][
+                iteration + 1
+            ] = self.communication.total_data
         return results_dict
 
     def write_results_dict(self, results_dict):
@@ -487,7 +497,9 @@ class FederatedParameterServerIFCA(Node):
         Args:
             results_dict (_type_): _description_
         """
-        with open(os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w") as of:
+        with open(
+            os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w"
+        ) as of:
             json.dump(results_dict, of)
 
     def disconect_early_restart(self):
@@ -495,7 +507,9 @@ class FederatedParameterServerIFCA(Node):
         logging.info("Early restart: Disconnecting neighbors")
         if not self.sent_disconnections:
             for neighbor in self.my_neighbors:
-                self.communication.send(neighbor, {"RESTART": self.uid, "CHANNEL": "WORKER_REQUEST"})
+                self.communication.send(
+                    neighbor, {"RESTART": self.uid, "CHANNEL": "WORKER_REQUEST"}
+                )
                 self.barrier.remove(neighbor)
 
             self.sent_disconnections = True

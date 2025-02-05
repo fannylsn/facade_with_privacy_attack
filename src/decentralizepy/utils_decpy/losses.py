@@ -13,7 +13,9 @@ class FairLogLossDemoPar(nn.Module):
         self.momentum_fair_metrics = momentum_fair_metrics
 
         self.cross_entropy = nn.CrossEntropyLoss(reduction=reduction)
-        self.mse_loss = nn.MSELoss(reduction="mean")  # always, we compute mse of classes, no sample
+        self.mse_loss = nn.MSELoss(
+            reduction="mean"
+        )  # always, we compute mse of classes, no sample
 
         self.training = False
 
@@ -67,7 +69,9 @@ class FairLogLossDemoPar(nn.Module):
 
         # Discrepancy from the external positive rates
         demo_par_loss = self.mse_loss(pos_probs, self.pos_probs_other)
-        logging.debug(f"requ grad: {pos_probs.requires_grad}, fair_loss = {demo_par_loss}")
+        logging.debug(
+            f"requ grad: {pos_probs.requires_grad}, fair_loss = {demo_par_loss}"
+        )
 
         # loss = cross_entropy_loss / torch.sqrt(self.lambda_) + torch.sqrt(self.lambda_) * demo_par_loss
         loss = cross_entropy_loss + self.lambda_ * demo_par_loss
@@ -80,8 +84,9 @@ class FairLogLossDemoPar(nn.Module):
             if self.pos_probs is None:
                 self.pos_probs = pos_probs
             else:
-                self.pos_probs = self.pos_probs.detach() * self.momentum_fair_metrics + pos_probs * (
-                    1 - self.momentum_fair_metrics
+                self.pos_probs = (
+                    self.pos_probs.detach() * self.momentum_fair_metrics
+                    + pos_probs * (1 - self.momentum_fair_metrics)
                 )
             return self.pos_probs
         else:
@@ -103,7 +108,9 @@ class FairLogLossEquOdds(nn.Module):
         self.momentum_fair_metrics = momentum_fair_metrics
 
         self.cross_entropy = nn.CrossEntropyLoss(reduction=reduction)
-        self.mse_loss = nn.MSELoss(reduction="mean")  # always, we compute mse of classes, no sample
+        self.mse_loss = nn.MSELoss(
+            reduction="mean"
+        )  # always, we compute mse of classes, no sample
 
         self.training = False
 
@@ -154,7 +161,9 @@ class FairLogLossEquOdds(nn.Module):
 
         # FALSE POSITIVE RATE
         denominator = TN + FP
-        safe_denominator = torch.where(denominator == 0, torch.ones_like(denominator), denominator)
+        safe_denominator = torch.where(
+            denominator == 0, torch.ones_like(denominator), denominator
+        )
         fpr = FP / safe_denominator
 
         # Both must be | .. -  .. | -> easier to just concat them
@@ -169,7 +178,9 @@ class FairLogLossEquOdds(nn.Module):
         # logging.debug(f"new recall_probs:{self.recall_probs}")
 
         equ_odds_loss = self.mse_loss(recall_probs, self.recall_probs_other)
-        logging.debug(f"requ grad: {recall_probs.requires_grad}, fair_loss = {equ_odds_loss}")
+        logging.debug(
+            f"requ grad: {recall_probs.requires_grad}, fair_loss = {equ_odds_loss}"
+        )
 
         # loss = cross_entropy_loss / torch.sqrt(self.lambda_) + torch.sqrt(self.lambda_) * equ_odds_loss
         loss = cross_entropy_loss + self.lambda_ * equ_odds_loss
@@ -182,8 +193,9 @@ class FairLogLossEquOdds(nn.Module):
             if self.recall_probs is None:
                 self.recall_probs = recall_probs
             else:
-                self.recall_probs = self.recall_probs.detach() * self.momentum_fair_metrics + recall_probs * (
-                    1 - self.momentum_fair_metrics
+                self.recall_probs = (
+                    self.recall_probs.detach() * self.momentum_fair_metrics
+                    + recall_probs * (1 - self.momentum_fair_metrics)
                 )
             return self.recall_probs
         else:
@@ -205,7 +217,9 @@ class FairLogLossAcc(nn.Module):
         self.momentum_fair_metrics = momentum_fair_metrics
 
         self.cross_entropy = nn.CrossEntropyLoss(reduction=reduction)
-        self.mse_loss = nn.MSELoss(reduction="mean")  # always, we compute mse of classes, no sample
+        self.mse_loss = nn.MSELoss(
+            reduction="mean"
+        )  # always, we compute mse of classes, no sample
 
         self.training = False
 
@@ -255,7 +269,9 @@ class FairLogLossAcc(nn.Module):
         # logging.debug(f"new recall_probs:{self.recall_probs}")
 
         acc_diff_loss = self.mse_loss(acc_probs, self.acc_probs_other)
-        logging.debug(f"requ grad: {acc_probs.requires_grad}, fair_loss = {acc_diff_loss}")
+        logging.debug(
+            f"requ grad: {acc_probs.requires_grad}, fair_loss = {acc_diff_loss}"
+        )
 
         # loss = cross_entropy_loss / torch.sqrt(self.lambda_) + torch.sqrt(self.lambda_) * acc_diff_loss
         loss = cross_entropy_loss + self.lambda_ * acc_diff_loss
@@ -268,8 +284,9 @@ class FairLogLossAcc(nn.Module):
             if self.acc_probs is None:
                 self.acc_probs = acc_probs
             else:
-                self.acc_probs = self.acc_probs.detach() * self.momentum_fair_metrics + acc_probs * (
-                    1 - self.momentum_fair_metrics
+                self.acc_probs = (
+                    self.acc_probs.detach() * self.momentum_fair_metrics
+                    + acc_probs * (1 - self.momentum_fair_metrics)
                 )
             return self.acc_probs
         else:
@@ -291,7 +308,9 @@ class FairLogLossDiffLoss(nn.Module):
         self.momentum_fair_metrics = momentum_fair_metrics
 
         self.cross_entropy = nn.CrossEntropyLoss(reduction=reduction)
-        self.mse_loss = nn.MSELoss(reduction="mean")  # always, we compute mse of cluster, no sample
+        self.mse_loss = nn.MSELoss(
+            reduction="mean"
+        )  # always, we compute mse of cluster, no sample
 
         self.training = False
 
@@ -305,7 +324,9 @@ class FairLogLossDiffLoss(nn.Module):
         return self.mean_clust_loss.detach().clone()
 
     def set_fair_metric_other(self, mean_cluster_loss_other: torch.Tensor):
-        self.mean_clust_loss_other = mean_cluster_loss_other.mean()  # first iter is init tensor with 10 entries
+        self.mean_clust_loss_other = (
+            mean_cluster_loss_other.mean()
+        )  # first iter is init tensor with 10 entries
 
     def forward(self, outputs: torch.Tensor, targets: torch.Tensor):
         """Custom loss"""
@@ -347,7 +368,9 @@ class FairLogLossDiffLoss(nn.Module):
         # print(f"scalar:{mean_clust_loss}")
         # print(f"other {self.mean_clust_loss_other}")
         clust_loss_diff = self.mse_loss(mean_clust_loss, self.mean_clust_loss_other)
-        logging.debug(f"requ grad: {clust_loss_diff.requires_grad}, fair_loss = {clust_loss_diff}")
+        logging.debug(
+            f"requ grad: {clust_loss_diff.requires_grad}, fair_loss = {clust_loss_diff}"
+        )
 
         # loss = cross_entropy_loss / torch.sqrt(self.lambda_) + torch.sqrt(self.lambda_) * clust_loss_diff
         loss = cross_entropy_loss + self.lambda_ * clust_loss_diff
@@ -361,8 +384,9 @@ class FairLogLossDiffLoss(nn.Module):
             if self.mean_clust_loss is None:
                 self.mean_clust_loss = mean_nllloss
             else:
-                self.mean_clust_loss = self.mean_clust_loss.detach() * self.momentum_fair_metrics + mean_nllloss * (
-                    1 - self.momentum_fair_metrics
+                self.mean_clust_loss = (
+                    self.mean_clust_loss.detach() * self.momentum_fair_metrics
+                    + mean_nllloss * (1 - self.momentum_fair_metrics)
                 )
             return self.mean_clust_loss
         else:
@@ -432,14 +456,18 @@ class FairLogLossModelDiff(nn.Module):
         self.cross_entropy_loss = self.cross_entropy(outputs, targets)  # scalar
 
         param_diff = []
-        for param1, param2 in zip(self.model.parameters(), self.model_other.parameters()):
+        for param1, param2 in zip(
+            self.model.parameters(), self.model_other.parameters()
+        ):
             param_diff.append(torch.norm(torch.sub(param1, param2), p=2))  # old
 
         stacked_diffs = torch.stack(param_diff)
         self.param_diff_mean = torch.mean(stacked_diffs, dim=0)
 
         if self.training:
-            logging.debug(f"cel loss: {self.cross_entropy_loss}, param_diff loss: {self.param_diff_mean}")
+            logging.debug(
+                f"cel loss: {self.cross_entropy_loss}, param_diff loss: {self.param_diff_mean}"
+            )
         # if self.training:
         #     self.cross_entropy_loss.retain_grad()
         #     self.param_diff_mean.retain_grad()
@@ -519,12 +547,18 @@ class FairLogLossLayerDiff(nn.Module):
         self.cross_entropy_loss = self.cross_entropy(outputs, targets)  # scalar
 
         scaled_param_diff = []
-        for lamb, param1, param2 in zip(self.lambda_, self.model.get_layers(), self.model_other.get_layers()):
+        for lamb, param1, param2 in zip(
+            self.lambda_, self.model.get_layers(), self.model_other.get_layers()
+        ):
             scaled_param_diff.append(
                 lamb
                 * torch.sqrt(
-                    torch.sum(torch.pow(torch.sub(param1.weight, param2.weight), exponent=2))
-                    + torch.sum(torch.pow(torch.sub(param1.bias, param2.bias), exponent=2))
+                    torch.sum(
+                        torch.pow(torch.sub(param1.weight, param2.weight), exponent=2)
+                    )
+                    + torch.sum(
+                        torch.pow(torch.sub(param1.bias, param2.bias), exponent=2)
+                    )
                 )
             )
 
@@ -532,7 +566,9 @@ class FairLogLossLayerDiff(nn.Module):
         self.scaled_param_diff_mean = torch.mean(scaled_stacked_diffs, dim=0)
 
         if self.training:
-            logging.debug(f"cel loss: {self.cross_entropy_loss}, param_diff loss: {self.scaled_param_diff_mean}")
+            logging.debug(
+                f"cel loss: {self.cross_entropy_loss}, param_diff loss: {self.scaled_param_diff_mean}"
+            )
         # if self.training:
         #     self.cross_entropy_loss.retain_grad()
         #     self.param_diff_mean.retain_grad()
@@ -621,7 +657,9 @@ class FeatureAlignmentLoss(nn.Module):
                 # Combine the cross-entropy loss and the weighted feature alignment loss
                 total_loss = weighted_feature_alignment_loss
                 self.inner_count = 1
-                logging.debug(f"Feature alignment loss: {weighted_feature_alignment_loss}")
+                logging.debug(
+                    f"Feature alignment loss: {weighted_feature_alignment_loss}"
+                )
             else:
                 self.inner_count += 1
                 total_loss = cross_entropy_loss

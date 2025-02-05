@@ -68,7 +68,17 @@ class GraphOrchestratorDisPFL(PeerSamplerDynamic):
         nodeConfigs = config["NODE"]
         self.graph_degree = nodeConfigs["graph_degree"]
 
-        self.instantiate(rank, machine_id, mapping, graph, config, iterations, log_dir, log_level, *args)
+        self.instantiate(
+            rank,
+            machine_id,
+            mapping,
+            graph,
+            config,
+            iterations,
+            log_dir,
+            log_level,
+            *args,
+        )
 
         self.run()
 
@@ -99,7 +109,11 @@ class GraphOrchestratorDisPFL(PeerSamplerDynamic):
     def get_neighbors(self, node, iteration=None):
         if iteration is not None:
             if iteration > self.iteration:
-                logging.debug("iteration, self.iteration: {}, {}".format(iteration, self.iteration))
+                logging.debug(
+                    "iteration, self.iteration: {}, {}".format(
+                        iteration, self.iteration
+                    )
+                )
                 assert iteration == self.iteration + 1
                 self.iteration = iteration
                 self.graphs.append(

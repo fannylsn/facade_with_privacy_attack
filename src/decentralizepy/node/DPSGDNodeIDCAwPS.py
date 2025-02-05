@@ -91,7 +91,9 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
         """
 
         total_threads = os.cpu_count()
-        self.threads_per_proc = max(math.floor(total_threads / mapping.get_local_procs_count()), 1)
+        self.threads_per_proc = max(
+            math.floor(total_threads / mapping.get_local_procs_count()), 1
+        )
         torch.set_num_threads(self.threads_per_proc)
         torch.set_num_interop_threads(1)
         self.instantiate(
@@ -108,7 +110,9 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
             reset_optimizer,
             *args,
         )
-        logging.info("Each proc uses %d threads out of %d.", self.threads_per_proc, total_threads)
+        logging.info(
+            "Each proc uses %d threads out of %d.", self.threads_per_proc, total_threads
+        )
         self.run()
 
     def instantiate(
@@ -211,7 +215,9 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
 
         self.graph_degree = node_config["graph_degree"]
         self.graph_seed = node_config["graph_seed"]
-        self.graph = self.graph_class(self.n_procs, self.graph_degree, self.graph_seed)  # type: Graph
+        self.graph = self.graph_class(
+            self.n_procs, self.graph_degree, self.graph_seed
+        )  # type: Graph
 
     def get_neighbors(self, node=None):
         self.get_new_graph()
@@ -242,7 +248,9 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
         """
         if self.sharing_class == CurrentModelSharing:
             # send only one model
-            to_send = self.sharing.get_data_to_send(self.trainer.current_model_idx, len(self.my_neighbors))
+            to_send = self.sharing.get_data_to_send(
+                self.trainer.current_model_idx, len(self.my_neighbors)
+            )
         else:
             # send all model like in the non-Peer Sampler case
             to_send = self.sharing.get_data_to_send(len(self.my_neighbors))

@@ -2,14 +2,15 @@ import logging
 from pathlib import Path
 from shutil import copy
 
+from localconfig import LocalConfig
+from torch import multiprocessing as mp
+
 from decentralizepy import utils
 from decentralizepy.mappings.Linear import Linear
 from decentralizepy.node.DPSGDNodeFederatedIFCA import DPSGDNodeFederatedIFCA
 from decentralizepy.node.FederatedParameterServerIFCA import (
     FederatedParameterServerIFCA,
 )
-from localconfig import LocalConfig
-from torch import multiprocessing as mp
 
 
 def read_ini(file_path):

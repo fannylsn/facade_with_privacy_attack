@@ -46,16 +46,22 @@ def create_train_test_splits(base_dir, train_size=0.8):
     os.makedirs(test_dir, exist_ok=True)
 
     # Get all class directories from the images folder
-    classes = [d for d in os.listdir(images_dir) if os.path.isdir(os.path.join(images_dir, d))]
+    classes = [
+        d for d in os.listdir(images_dir) if os.path.isdir(os.path.join(images_dir, d))
+    ]
 
     for cls in classes:
         class_path = os.path.join(images_dir, cls)
         subfolders = [
-            os.path.join(class_path, d) for d in os.listdir(class_path) if os.path.isdir(os.path.join(class_path, d))
+            os.path.join(class_path, d)
+            for d in os.listdir(class_path)
+            if os.path.isdir(os.path.join(class_path, d))
         ]
 
         # Split subfolders into train and test
-        train_subfolders, test_subfolders = train_test_split(subfolders, train_size=train_size, random_state=42)
+        train_subfolders, test_subfolders = train_test_split(
+            subfolders, train_size=train_size, random_state=42
+        )
 
         # Function to create symlinks for images in subfolders to flatten the structure
         def create_symlinks_files(subfolders, dest_dir):

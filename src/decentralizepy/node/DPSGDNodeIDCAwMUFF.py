@@ -93,7 +93,9 @@ class DPSGDNodeIDCAwMUFF(DPSGDNodeIDCAwPS):
         """
 
         total_threads = os.cpu_count()
-        self.threads_per_proc = max(math.floor(total_threads / mapping.get_local_procs_count()), 1)
+        self.threads_per_proc = max(
+            math.floor(total_threads / mapping.get_local_procs_count()), 1
+        )
         torch.set_num_threads(self.threads_per_proc)
         torch.set_num_interop_threads(1)
         self.instantiate(
@@ -110,7 +112,9 @@ class DPSGDNodeIDCAwMUFF(DPSGDNodeIDCAwPS):
             reset_optimizer,
             *args,
         )
-        logging.info("Each proc uses %d threads out of %d.", self.threads_per_proc, total_threads)
+        logging.info(
+            "Each proc uses %d threads out of %d.", self.threads_per_proc, total_threads
+        )
         self.run()
 
     def init_node(self, node_config):
@@ -131,7 +135,9 @@ class DPSGDNodeIDCAwMUFF(DPSGDNodeIDCAwPS):
 
         self.graph_degree = node_config["graph_degree"]
         self.graph_seed = node_config["graph_seed"]
-        self.graph = self.graph_class(self.n_procs, self.graph_degree, self.graph_seed)  # type: Graph
+        self.graph = self.graph_class(
+            self.n_procs, self.graph_degree, self.graph_seed
+        )  # type: Graph
 
     def run(self):
         """
@@ -163,7 +169,10 @@ class DPSGDNodeIDCAwMUFF(DPSGDNodeIDCAwPS):
                 self.share_receive_avg(share_noisy=False, make_new_graph=False)
 
             # logging and plotting
-            if iteration % self.sharing_rounds_muffliato == self.sharing_rounds_muffliato - 1:
+            if (
+                iteration % self.sharing_rounds_muffliato
+                == self.sharing_rounds_muffliato - 1
+            ):
                 # last iteration of the sharing round
                 results_dict = self.get_results_dict(iteration=training_iteration)
                 results_dict = self.log_metadata(results_dict, training_iteration)
@@ -173,38 +182,52 @@ class DPSGDNodeIDCAwMUFF(DPSGDNodeIDCAwPS):
                 if rounds_to_train_evaluate == 0:
                     logging.info("Evaluating on train set.")
                     rounds_to_train_evaluate = self.train_evaluate_after
-                    results_dict = self.compute_best_model_log_train_loss(results_dict, training_iteration)
+                    results_dict = self.compute_best_model_log_train_loss(
+                        results_dict, training_iteration
+                    )
 
                 if rounds_to_test == 0:
                     rounds_to_test = self.test_after
 
                     if self.dataset.__testing__:
                         logging.info("evaluating on test set.")
-                        results_dict = self.eval_on_testset(results_dict, training_iteration)
+                        results_dict = self.eval_on_testset(
+                            results_dict, training_iteration
+                        )
 
                     if self.dataset.__validating__:
                         logging.info("evaluating on validation set.")
-                        results_dict = self.eval_on_validationset(results_dict, training_iteration)
+                        results_dict = self.eval_on_validationset(
+                            results_dict, training_iteration
+                        )
 
                 self.write_results_dict(results_dict)
                 # update training iter after the whole sharing done for the step
                 training_iteration += 1
 
         # Done with all iterations
-        last_training_iteration = self.iterations - (self.iterations - 1) % self.train_evaluate_after
+        last_training_iteration = (
+            self.iterations - (self.iterations - 1) % self.train_evaluate_after
+        )
 
-        final_best_model_idx = results_dict["test_best_model_idx"][str(last_training_iteration)]
+        final_best_model_idx = results_dict["test_best_model_idx"][
+            str(last_training_iteration)
+        ]
         final_best_model = self.models[final_best_model_idx]
         if final_best_model.shared_parameters_counter is not None:
             logging.info("Saving the shared parameter counts")
             with open(
-                os.path.join(self.log_dir, "{}_shared_parameters.json".format(self.rank)),
+                os.path.join(
+                    self.log_dir, "{}_shared_parameters.json".format(self.rank)
+                ),
                 "w",
             ) as of:
                 json.dump(self.model.shared_parameters_counter.numpy().tolist(), of)
         self.disconnect_neighbors()
         logging.info("Storing final weight")
-        final_best_model.dump_weights(self.weights_store_dir, self.uid, training_iteration)
+        final_best_model.dump_weights(
+            self.weights_store_dir, self.uid, training_iteration
+        )
         logging.info("All neighbors disconnected. Process complete!")
 
     def share_receive_avg(self, share_noisy: bool = False, make_new_graph: bool = True):
@@ -238,7 +261,11 @@ class DPSGDNodeIDCAwMUFF(DPSGDNodeIDCAwPS):
 
         while not self.received_from_all():
             sender, data = self.receive_DPSGD()
-            logging.debug("Received Model from {} of iteration {}".format(sender, data["iteration"]))
+            logging.debug(
+                "Received Model from {} of iteration {}".format(
+                    sender, data["iteration"]
+                )
+            )
             if sender not in self.peer_deques:
                 self.peer_deques[sender] = deque()
 
@@ -282,7 +309,9 @@ class DPSGDNodeIDCAwMUFF(DPSGDNodeIDCAwPS):
         adj_list = {x: list(adj.union({x})) for x, adj in enumerate(graph.adj_list)}
         self_loop_graph = nx.Graph(adj_list)
         W = nx.to_numpy_array(self_loop_graph) / (self.graph_degree + 1)
-        eigen = eigh(np.eye(self.n_procs) - W, eigvals_only=True, subset_by_index=[0, 1])
+        eigen = eigh(
+            np.eye(self.n_procs) - W, eigvals_only=True, subset_by_index=[0, 1]
+        )
         lambda_2 = eigen[1]
         assert 0 < lambda_2 < 1
         return lambda_2
@@ -306,7 +335,9 @@ class DPSGDNodeIDCAwMUFF(DPSGDNodeIDCAwPS):
         """
         if self.sharing_class == MuffliatoSharing:
             # send only one model
-            to_send = self.sharing.get_data_to_send(self.trainer.current_model_idx, len(self.my_neighbors))
+            to_send = self.sharing.get_data_to_send(
+                self.trainer.current_model_idx, len(self.my_neighbors)
+            )
         else:
             raise NotImplementedError("Implement other sharing classes")
         return to_send

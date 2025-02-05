@@ -90,7 +90,9 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
         """
 
         total_threads = os.cpu_count()
-        self.threads_per_proc = max(math.floor(total_threads / mapping.get_local_procs_count()), 1)
+        self.threads_per_proc = max(
+            math.floor(total_threads / mapping.get_local_procs_count()), 1
+        )
         torch.set_num_threads(self.threads_per_proc)
         torch.set_num_interop_threads(1)
         self.instantiate(
@@ -108,7 +110,9 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
             reset_optimizer,
             *args,
         )
-        logging.info("Each proc uses %d threads out of %d.", self.threads_per_proc, total_threads)
+        logging.info(
+            "Each proc uses %d threads out of %d.", self.threads_per_proc, total_threads
+        )
 
         self.message_queue["PEERS"] = deque()
 
@@ -196,7 +200,9 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
         # for DAC
         self.other_nodes = [i for i in range(self.graph.n_procs) if i != self.uid]
         self.one_over_loss = {idx: 0.0 for idx in self.other_nodes}
-        self.prior_norm = {idx: 1.0 / (self.graph.n_procs - 1) for idx in self.other_nodes}
+        self.prior_norm = {
+            idx: 1.0 / (self.graph.n_procs - 1) for idx in self.other_nodes
+        }
 
         self.tau_coef = 0.2
         self.tau_init = 30
@@ -219,7 +225,9 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
         """
         dataset_module = importlib.import_module(dataset_configs["dataset_package"])
         self.dataset_class = getattr(dataset_module, dataset_configs["dataset_class"])
-        random_seed = dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
+        random_seed = (
+            dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
+        )
         self.orig_seed = random_seed
         torch.manual_seed(random_seed)
         np.random.seed(random_seed)
@@ -227,7 +235,9 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
             dataset_configs,
             ["dataset_package", "dataset_class", "model_class"],
         )
-        self.dataset = self.dataset_class(self.rank, self.machine_id, self.mapping, **self.dataset_params)
+        self.dataset = self.dataset_class(
+            self.rank, self.machine_id, self.mapping, **self.dataset_params
+        )
 
         logging.info("Dataset instantiation complete.")
 
@@ -266,11 +276,19 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
             # sharing
             # get the neighboors we want to receive from
             self.my_incomming_neighbors = self.get_incomming_neighbors()
-            logging.info("Incomming neighbors (to recieve from): {}".format(self.my_incomming_neighbors))
+            logging.info(
+                "Incomming neighbors (to recieve from): {}".format(
+                    self.my_incomming_neighbors
+                )
+            )
             # get the neighbors we have to send to
             self.my_outgoing_neighbors = self.get_outgoing_neighbors()
-            logging.info("Outgoing neighbors (to send to): {}".format(self.my_outgoing_neighbors))
-            self.my_neighbors = self.my_incomming_neighbors.union(self.my_outgoing_neighbors)
+            logging.info(
+                "Outgoing neighbors (to send to): {}".format(self.my_outgoing_neighbors)
+            )
+            self.my_neighbors = self.my_incomming_neighbors.union(
+                self.my_outgoing_neighbors
+            )
             self.connect_neighbors()
             logging.debug("Connected to all neighbors")
 
@@ -282,7 +300,11 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
 
             while not self.received_from_all_incomming():
                 sender, data = self.receive_DPSGD()
-                logging.debug("Received Model from {} of iteration {}".format(sender, data["iteration"]))
+                logging.debug(
+                    "Received Model from {} of iteration {}".format(
+                        sender, data["iteration"]
+                    )
+                )
                 if sender not in self.peer_deques:
                     self.peer_deques[sender] = deque()
 
@@ -330,7 +352,9 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
 
         # done with all iters
         if self.do_all_reduce_models:
-            raise NotImplementedError("All reduce models not implemented for DPSGDNodeDAC (and should be of no use)")
+            raise NotImplementedError(
+                "All reduce models not implemented for DPSGDNodeDAC (and should be of no use)"
+            )
             self.all_reduce_model()
 
             # final test
@@ -345,7 +369,9 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
         if self.model.shared_parameters_counter is not None:
             logging.info("Saving the shared parameter counts")
             with open(
-                os.path.join(self.log_dir, "{}_shared_parameters.json".format(self.rank)),
+                os.path.join(
+                    self.log_dir, "{}_shared_parameters.json".format(self.rank)
+                ),
                 "w",
             ) as of:
                 json.dump(self.model.shared_parameters_counter.numpy().tolist(), of)
@@ -364,13 +390,20 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
         if num_non_zero >= self.graph_degree:
             # If there are enough non-zero probabilities, sample directly
             neighbors = set(
-                np.random.choice(self.other_nodes, self.graph_degree, replace=False, p=list(self.prior_norm.values()))
+                np.random.choice(
+                    self.other_nodes,
+                    self.graph_degree,
+                    replace=False,
+                    p=list(self.prior_norm.values()),
+                )
             )
         else:
             # If there are fewer non-zero probabilities than required samples,
             # sample all non-zero indices and fill the remaining slots with random samples
             remaining_slots = self.graph_degree - num_non_zero
-            remaining_indices = set(np.random.choice(self.other_nodes, remaining_slots, replace=False))
+            remaining_indices = set(
+                np.random.choice(self.other_nodes, remaining_slots, replace=False)
+            )
             neighbors = set(non_zero_indices).union(remaining_indices)
 
         # put back old seed
@@ -418,7 +451,9 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
                 self.trainer.batch_size, self.trainer.shuffle
             )  # all models eval on same samples
             trainsets = tee(trainset_ori, len(neighbors_data))  # generator copy
-            for (neigh_rank, neigh_deque), trainset in zip(neighbors_data.items(), trainsets):
+            for (neigh_rank, neigh_deque), trainset in zip(
+                neighbors_data.items(), trainsets
+            ):
                 neigh_state_dict = self.sharing.deserialized_model(neigh_deque[0])
                 neigh_model.load_state_dict(neigh_state_dict)
                 loss = self.trainer.eval_loss_on_given_model(neigh_model, trainset)
@@ -428,7 +463,9 @@ class DPSGDNodeDAC(DPSGDWithPeerSamplerNIID):
         tau = self.tau_function(self.iteration, self.tau_init, self.tau_coef)
 
         softmax = torch.nn.Softmax(dim=0)
-        values = tau * torch.tensor(list(self.one_over_loss.values()), dtype=torch.float32)
+        values = tau * torch.tensor(
+            list(self.one_over_loss.values()), dtype=torch.float32
+        )
 
         values = softmax(values)
         values = np.asarray(values).astype("float64")  # !!!!!

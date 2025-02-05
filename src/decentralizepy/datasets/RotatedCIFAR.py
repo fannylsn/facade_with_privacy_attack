@@ -238,7 +238,9 @@ class LeNet(Model):
             for name, param in self.named_parameters():
                 if name not in self.current_head:
                     param.copy_(shared_layers.pop(0))
-        assert len(shared_layers) == 0, "The shared_layers list should be empty after setting."
+        assert (
+            len(shared_layers) == 0
+        ), "The shared_layers list should be empty after setting."
 
     def freeze_body(self):
         """Freeze the body of the network."""

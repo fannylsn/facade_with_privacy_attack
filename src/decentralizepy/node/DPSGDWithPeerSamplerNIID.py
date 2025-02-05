@@ -174,14 +174,18 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         """
         dataset_module = importlib.import_module(dataset_configs["dataset_package"])
         self.dataset_class = getattr(dataset_module, dataset_configs["dataset_class"])
-        random_seed = dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
+        random_seed = (
+            dataset_configs["random_seed"] if "random_seed" in dataset_configs else 97
+        )
         torch.manual_seed(random_seed)
         np.random.seed(random_seed)
         self.dataset_params = utils.remove_keys(
             dataset_configs,
             ["dataset_package", "dataset_class", "model_class"],
         )
-        self.dataset = self.dataset_class(self.rank, self.machine_id, self.mapping, **self.dataset_params)
+        self.dataset = self.dataset_class(
+            self.rank, self.machine_id, self.mapping, **self.dataset_params
+        )
 
         logging.info("Dataset instantiation complete.")
 
@@ -284,7 +288,11 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
 
             while not self.received_from_all():
                 sender, data = self.receive_DPSGD()
-                logging.debug("Received Model from {} of iteration {}".format(sender, data["iteration"]))
+                logging.debug(
+                    "Received Model from {} of iteration {}".format(
+                        sender, data["iteration"]
+                    )
+                )
                 if sender not in self.peer_deques:
                     self.peer_deques[sender] = deque()
 
@@ -337,7 +345,9 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         if self.model.shared_parameters_counter is not None:
             logging.info("Saving the shared parameter counts")
             with open(
-                os.path.join(self.log_dir, "{}_shared_parameters.json".format(self.rank)),
+                os.path.join(
+                    self.log_dir, "{}_shared_parameters.json".format(self.rank)
+                ),
                 "w",
             ) as of:
                 json.dump(self.model.shared_parameters_counter.numpy().tolist(), of)
@@ -401,9 +411,13 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         results_dict["total_bytes"][iteration + 1] = self.communication.total_bytes
 
         if hasattr(self.communication, "total_meta"):
-            results_dict["total_meta"][str(iteration + 1)] = self.communication.total_meta
+            results_dict["total_meta"][
+                str(iteration + 1)
+            ] = self.communication.total_meta
         if hasattr(self.communication, "total_data"):
-            results_dict["total_data_per_n"][str(iteration + 1)] = self.communication.total_data
+            results_dict["total_data_per_n"][
+                str(iteration + 1)
+            ] = self.communication.total_data
         return results_dict
 
     def write_results_dict(self, results_dict):
@@ -412,7 +426,9 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         Args:
             results_dict (_type_): _description_
         """
-        with open(os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w") as of:
+        with open(
+            os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w"
+        ) as of:
             json.dump(results_dict, of)
 
     def compute_log_train_loss(self, results_dict, iteration):
@@ -452,8 +468,12 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
             dict: Dictionary containing the results
         """
         loss_func = self.loss_class(reduction="none")
-        per_sample_loss_tr = self.trainer.compute_per_sample_loss(self.dataset, loss_func)
-        results_dict["per_sample_loss_train"][str(iteration + 1)] = json.dumps(per_sample_loss_tr)
+        per_sample_loss_tr = self.trainer.compute_per_sample_loss(
+            self.dataset, loss_func
+        )
+        results_dict["per_sample_loss_train"][str(iteration + 1)] = json.dumps(
+            per_sample_loss_tr
+        )
         return results_dict
 
     def eval_on_testset(self, results_dict: Dict, iteration):
@@ -464,7 +484,10 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         Returns:
             dict: Dictionary containing the results
         """
-        if isinstance(self.dataset, RotatedFLICKR) and not iteration >= self.iterations - 1:
+        if (
+            isinstance(self.dataset, RotatedFLICKR)
+            and not iteration >= self.iterations - 1
+        ):
             return results_dict
         logging.info("Begin evaluation on test set.")
         ta, tl = self.dataset.test(self.model, self.loss)
@@ -488,18 +511,33 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         loss_func = self.loss_class(reduction="none")
 
         if self.do_all_reduce_models:
-            log_pred_this_iter = self.log_per_sample_pred_true and iteration == self.iterations
+            log_pred_this_iter = (
+                self.log_per_sample_pred_true and iteration == self.iterations
+            )
         else:
-            log_pred_this_iter = self.log_per_sample_pred_true and iteration >= self.iterations - self.test_after
+            log_pred_this_iter = (
+                self.log_per_sample_pred_true
+                and iteration >= self.iterations - self.test_after
+            )
 
-        per_sample_loss, per_sample_pred, per_sample_true = self.dataset.compute_per_sample_loss(
+        (
+            per_sample_loss,
+            per_sample_pred,
+            per_sample_true,
+        ) = self.dataset.compute_per_sample_loss(
             self.model, loss_func, False, self.log_per_sample_loss, log_pred_this_iter
         )
         if self.log_per_sample_loss:
-            results_dict["per_sample_loss_test"][str(iteration + 1)] = json.dumps(per_sample_loss)
+            results_dict["per_sample_loss_test"][str(iteration + 1)] = json.dumps(
+                per_sample_loss
+            )
         if log_pred_this_iter:
-            results_dict["per_sample_pred_test"][str(iteration + 1)] = json.dumps(per_sample_pred)
-            results_dict["per_sample_true_test"][str(iteration + 1)] = json.dumps(per_sample_true)
+            results_dict["per_sample_pred_test"][str(iteration + 1)] = json.dumps(
+                per_sample_pred
+            )
+            results_dict["per_sample_true_test"][str(iteration + 1)] = json.dumps(
+                per_sample_true
+            )
         return results_dict
 
     def eval_on_validationset(self, results_dict: Dict, iteration):
@@ -519,7 +557,9 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         results_dict["validation_loss"][str(iteration + 1)] = vl
         return results_dict
 
-    def compute_log_per_sample_loss_val(self, results_dict: Dict, iteration: int, best_idx: int):
+    def compute_log_per_sample_loss_val(
+        self, results_dict: Dict, iteration: int, best_idx: int
+    ):
         """Not used currently. Compute the per sample loss for the current model.
 
         Args:
@@ -530,8 +570,12 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         """
         loss_func = self.loss_class(reduction="none")
         model = self.models[best_idx]
-        per_sample_loss_val = self.dataset.compute_per_sample_loss(model, loss_func, validation=True)
-        results_dict["per_sample_loss_val"][str(iteration + 1)] = json.dumps(per_sample_loss_val)
+        per_sample_loss_val = self.dataset.compute_per_sample_loss(
+            model, loss_func, validation=True
+        )
+        results_dict["per_sample_loss_val"][str(iteration + 1)] = json.dumps(
+            per_sample_loss_val
+        )
         return results_dict
 
     def all_reduce_model(self):
@@ -563,7 +607,11 @@ class DPSGDWithPeerSamplerNIID(DPSGDWithPeerSampler):
         self.iteration = self.iterations
         while not self.received_from_all():
             sender, data = self.receive_DPSGD()
-            logging.debug("Received Model from {} of iteration {}".format(sender, data["iteration"]))
+            logging.debug(
+                "Received Model from {} of iteration {}".format(
+                    sender, data["iteration"]
+                )
+            )
             if sender not in self.peer_deques:
                 self.peer_deques[sender] = deque()
 

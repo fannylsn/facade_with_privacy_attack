@@ -102,7 +102,9 @@ class DatasetClustered(Dataset):
         rng = Random()
         rng.seed(self.random_seed)
         if self.sizes is None:
-            self.clusters_idx = [i % self.number_of_clusters for i in range(self.num_nodes)]
+            self.clusters_idx = [
+                i % self.number_of_clusters for i in range(self.num_nodes)
+            ]
         else:
             self.clusters_idx = []
             for idx, size in enumerate(self.sizes):
@@ -280,7 +282,11 @@ class DatasetClustered(Dataset):
                 accuracy = 100.0
             logging.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
 
-        accuracy = 100 * float(totals_correct[best_model_idx]) / totals_predicted[best_model_idx]
+        accuracy = (
+            100
+            * float(totals_correct[best_model_idx])
+            / totals_predicted[best_model_idx]
+        )
         final_loss_val = loss_vals[best_model_idx] / count
         logging.info("Overall test accuracy is: {:.1f} %".format(accuracy))
 
@@ -371,7 +377,11 @@ class DatasetClustered(Dataset):
                 accuracy = 100.0
             logging.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
 
-        accuracy = 100 * float(totals_correct[best_model_idx]) / totals_predicted[best_model_idx]
+        accuracy = (
+            100
+            * float(totals_correct[best_model_idx])
+            / totals_predicted[best_model_idx]
+        )
         loss_vals = [loss_val / count for loss_val in loss_vals]
         final_loss_val = loss_vals[best_model_idx]
         logging.info("Overall test accuracy is: {:.1f} %".format(accuracy))
@@ -383,7 +393,12 @@ class DatasetClustered(Dataset):
         return accuracy, final_loss_val, loss_vals, best_model_idx
 
     def compute_per_sample_loss(
-        self, model: Model, loss_func, validation: bool = False, log_loss: bool = False, log_pred_true: bool = False
+        self,
+        model: Model,
+        loss_func,
+        validation: bool = False,
+        log_loss: bool = False,
+        log_pred_true: bool = False,
     ):
         """
         Compute the per sample loss for the current model (the one that will be shared).
@@ -417,7 +432,9 @@ class DatasetClustered(Dataset):
                     per_sample_loss.extend(loss_val.tolist())
                 if log_pred_true:
                     if self.top_k_acc > 1:
-                        per_sample_pred.append(predictions.tolist())  # pred is list of list
+                        per_sample_pred.append(
+                            predictions.tolist()
+                        )  # pred is list of list
                     else:
                         per_sample_pred.extend(predictions.tolist())
                     per_sample_true.extend(labels.tolist())

@@ -29,9 +29,15 @@ class RotatedDataset(DatasetClustered):
             logging.info(f"Cluster {self.cluster} applying rotation: {rotation}")
             return torchvision.transforms.RandomRotation(degrees=[rotation, rotation])
         elif self.number_of_clusters == 3 or self.number_of_clusters == 4:
-            return torchvision.transforms.RandomRotation(degrees=[90 * self.cluster, 90 * self.cluster])
+            return torchvision.transforms.RandomRotation(
+                degrees=[90 * self.cluster, 90 * self.cluster]
+            )
         else:
-            raise ValueError("Rotation transform not implemented for {} clusters".format(self.number_of_clusters))
+            raise ValueError(
+                "Rotation transform not implemented for {} clusters".format(
+                    self.number_of_clusters
+                )
+            )
 
     def get_color_transform(self) -> torchvision.transforms.ColorJitter:
         if self.number_of_clusters == 2:

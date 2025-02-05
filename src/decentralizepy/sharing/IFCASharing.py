@@ -131,7 +131,11 @@ class IFCASharing(Sharing):
                 del data["iteration"]
                 del data["model_idx"]
                 del data["CHANNEL"]
-                logging.debug("Averaging model from neighbor {} of iteration {}".format(n, iteration))
+                logging.debug(
+                    "Averaging model from neighbor {} of iteration {}".format(
+                        n, iteration
+                    )
+                )
                 data = self.deserialized_model(data)
                 if model_idx in received_models:
                     received_models[model_idx].append(data)
@@ -199,7 +203,9 @@ class IFCASharing(Sharing):
             state_dict = dict()
             for i, key in enumerate(model.state_dict()):
                 end_index = start_index + self.lens[i]
-                state_dict[key] = torch.from_numpy(T[start_index:end_index].reshape(self.shapes[i]))
+                state_dict[key] = torch.from_numpy(
+                    T[start_index:end_index].reshape(self.shapes[i])
+                )
                 start_index = end_index
             state_dicts.append(state_dict)
         return state_dicts

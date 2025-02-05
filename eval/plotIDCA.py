@@ -60,7 +60,9 @@ def get_per_cluster_stats(results, metric="test_loss"):
         mean_dict, stdev_dict, min_dict, max_dict = {}, {}, {}, {}
         for key in results[0][metric].keys():
             # key == iter
-            all_nodes = [i[metric][key] for i in results if i["cluster_assigned"] == clust]
+            all_nodes = [
+                i[metric][key] for i in results if i["cluster_assigned"] == clust
+            ]
             all_nodes = np.array(all_nodes)
             mean = np.mean(all_nodes)
             std = np.std(all_nodes)
@@ -74,7 +76,17 @@ def get_per_cluster_stats(results, metric="test_loss"):
     return final_data
 
 
-def plot(means, stdevs, mins, maxs, title, label=None, loc="lower right", xlabel="communication rounds", yticks=None):
+def plot(
+    means,
+    stdevs,
+    mins,
+    maxs,
+    title,
+    label=None,
+    loc="lower right",
+    xlabel="communication rounds",
+    yticks=None,
+):
     plt.title(title)
     plt.xlabel(xlabel)
     plt.grid(True, color="gray", linestyle="-", linewidth=0.5)
@@ -91,7 +103,9 @@ def plot(means, stdevs, mins, maxs, title, label=None, loc="lower right", xlabel
     plt.tight_layout()
 
 
-def per_cluster_plot(final_data, title, loc, xlabel="communication rounds", yticks=None):
+def per_cluster_plot(
+    final_data, title, loc, xlabel="communication rounds", yticks=None
+):
     for clust, data in final_data.items():
         means, stdevs, mins, maxs = data
         x_axis = np.array(list(means.keys()))
@@ -278,7 +292,12 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
     plt.figure(33, figsize=(8, 7))
     final_data = get_per_cluster_stats(results, metric="test_acc")
-    per_cluster_plot(final_data, "Testing accuracy per cluster", "lower right", yticks=np.arange(0, 81, 10))
+    per_cluster_plot(
+        final_data,
+        "Testing accuracy per cluster",
+        "lower right",
+        yticks=np.arange(0, 81, 10),
+    )
     df = pd.DataFrame(
         {
             "mean_0": list(final_data[0][0].values()),
@@ -403,8 +422,12 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
     if "per_sample_loss_train" in results[0].keys():
         # for MIA
         for res in results:
-            res["per_sample_loss_train"] = {k: json.loads(v) for k, v in res["per_sample_loss_train"].items()}
-            res["per_sample_loss_test"] = {k: json.loads(v) for k, v in res["per_sample_loss_test"].items()}
+            res["per_sample_loss_train"] = {
+                k: json.loads(v) for k, v in res["per_sample_loss_train"].items()
+            }
+            res["per_sample_loss_test"] = {
+                k: json.loads(v) for k, v in res["per_sample_loss_test"].items()
+            }
         plt.figure(9)
         plot_loss_distribution(results, folder_path)
         plt.figure(10)
@@ -412,7 +435,10 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
         plt.figure(11)
         plot_per_cluster_AUC(results, folder_path)
 
-    if "per_sample_pred_test" in results[0].keys() and results[0]["per_sample_pred_test"]:
+    if (
+        "per_sample_pred_test" in results[0].keys()
+        and results[0]["per_sample_pred_test"]
+    ):
         for res in results:
             for k, v in res["per_sample_pred_test"].items():
                 if isinstance(v, list):
@@ -443,11 +469,17 @@ def plot_cluster_model_evolution(folder_path, results):
                     all_train_loss[inner_key][outer_key] = value
             train_best_idx = [
                 (res["cluster_assigned"], int(k), list(v.values()).index(best_loss))
-                for (k, v), best_loss in zip(all_train_loss.items(), res["train_loss"].values())
+                for (k, v), best_loss in zip(
+                    all_train_loss.items(), res["train_loss"].values()
+                )
             ]
             data.extend(train_best_idx)
     else:
-        data = [(x["cluster_assigned"], int(k), v) for x in results for k, v in x["test_best_model_idx"].items()]
+        data = [
+            (x["cluster_assigned"], int(k), v)
+            for x in results
+            for k, v in x["test_best_model_idx"].items()
+        ]
     clusters = set([x[0] for x in data])
     models = set([x[2] for x in data])
     max_iter = max([el[1] for el in data])
@@ -474,7 +506,9 @@ def plot_cluster_model_evolution(folder_path, results):
             )
         axs[i].set_ylim(ymin=0)
         axs[i].set_xticks(np.arange(0, max_iter + 1, 10))
-        axs[i].title.set_text(f"{int(len(cluster_data)/len(count))} nodes in cluster {CLUSTER_NAMES[cluster]}")
+        axs[i].title.set_text(
+            f"{int(len(cluster_data)/len(count))} nodes in cluster {CLUSTER_NAMES[cluster]}"
+        )
         axs[i].legend(loc="upper right", fontsize="8")
         axs[i].set_ylabel("# of nodes")
     # fig.text(0.00, 0.5, "Number of nodes", va="center", rotation="vertical")
@@ -489,12 +523,21 @@ def plot_final_cluster_model_attribution(folder_path, results):
     if results[0]["test_best_model_idx"] == {}:
         plot_final_train_cluster_model_attribution(folder_path, results)
         return
-    max_iter = max([int(iter) for x in results for iter in x["test_best_model_idx"].keys()])
+    max_iter = max(
+        [int(iter) for x in results for iter in x["test_best_model_idx"].keys()]
+    )
 
-    data = [(x["cluster_assigned"], x["test_best_model_idx"][str(max_iter)]) for x in results]
+    data = [
+        (x["cluster_assigned"], x["test_best_model_idx"][str(max_iter)])
+        for x in results
+    ]
     df = pd.DataFrame(data, columns=["Cluster Assigned", "Best Head"])
-    heatmap_data = df.groupby(["Cluster Assigned", "Best Head"]).size().reset_index(name="Count")
-    heatmap_matrix = heatmap_data.pivot(index="Cluster Assigned", columns="Best Head", values="Count").fillna(0)
+    heatmap_data = (
+        df.groupby(["Cluster Assigned", "Best Head"]).size().reset_index(name="Count")
+    )
+    heatmap_matrix = heatmap_data.pivot(
+        index="Cluster Assigned", columns="Best Head", values="Count"
+    ).fillna(0)
     plt.figure(figsize=(8, 6))
     sns.heatmap(heatmap_matrix, annot=True, fmt="g", cmap="YlGnBu")
     plt.title("Final Head choice")
@@ -516,13 +559,19 @@ def plot_final_train_cluster_model_attribution(folder_path, results):
         last_iter = str(max([int(k) for k in all_train_loss.keys()]))
         final_best_idx = (
             res["cluster_assigned"],
-            list(all_train_loss[last_iter].values()).index(res["train_loss"][last_iter]),
+            list(all_train_loss[last_iter].values()).index(
+                res["train_loss"][last_iter]
+            ),
         )
         data.append(final_best_idx)
 
     df = pd.DataFrame(data, columns=["Cluster Assigned", "Best Model"])
-    heatmap_data = df.groupby(["Cluster Assigned", "Best Model"]).size().reset_index(name="Count")
-    heatmap_matrix = heatmap_data.pivot(index="Cluster Assigned", columns="Best Model", values="Count").fillna(0)
+    heatmap_data = (
+        df.groupby(["Cluster Assigned", "Best Model"]).size().reset_index(name="Count")
+    )
+    heatmap_matrix = heatmap_data.pivot(
+        index="Cluster Assigned", columns="Best Model", values="Count"
+    ).fillna(0)
     plt.figure(figsize=(10, 8))
     sns.heatmap(heatmap_matrix, annot=True, fmt="g", cmap="YlGnBu")
     plt.title("Heatmap of Data Distribution")
@@ -558,7 +607,9 @@ def plot_all_models_train_loss(folder_path, results):
     # fig.set_figheight(4.35)
     fig.set_figheight(5)
     fig.set_figwidth(10)
-    fig.suptitle("Training loss of each models on the node's dataset\naveraged across all nodes in each cluster")
+    fig.suptitle(
+        "Training loss of each models on the node's dataset\naveraged across all nodes in each cluster"
+    )
     for clust in sorted(list(set(real_cluster))):
         data = [x for x in results if x["cluster_assigned"] == clust]
         all_models = sorted(list(set(data[0]["all_train_loss"].keys())))
@@ -585,7 +636,9 @@ def plot_all_models_train_loss(folder_path, results):
     plt.close()
 
 
-def plot_fair_accuracy(final_data, folder_path, label="Fair Accuracy", mean_type="weighted"):
+def plot_fair_accuracy(
+    final_data, folder_path, label="Fair Accuracy", mean_type="weighted"
+):
     mean_acc = {}
     acc_simility = {}
     fair_accuracy = {}
@@ -598,7 +651,9 @@ def plot_fair_accuracy(final_data, folder_path, label="Fair Accuracy", mean_type
         if mean_type == "arithmetic":
             fair_accuracy[it] = (mean_acc[it] + acc_simility[it]) / 2
         elif mean_type == "harmonic":
-            fair_accuracy[it] = 2 * mean_acc[it] * acc_simility[it] / (mean_acc[it] + acc_simility[it])
+            fair_accuracy[it] = (
+                2 * mean_acc[it] * acc_simility[it] / (mean_acc[it] + acc_simility[it])
+            )
         if mean_type == "weighted":
             fair_accuracy[it] = (2 * mean_acc[it] + acc_simility[it]) / 3
 
@@ -648,7 +703,9 @@ def plot_parameters(path):
 
 def plot_AUC(results, folder_path):
     iterations_to_attack = list(results[0]["per_sample_loss_train"].keys())
-    auc_means_iterations, auc_stdev_iterations, counts_iterations = get_auc_means_iter(results, iterations_to_attack)
+    auc_means_iterations, auc_stdev_iterations, counts_iterations = get_auc_means_iter(
+        results, iterations_to_attack
+    )
 
     df = pd.DataFrame(
         {
@@ -700,7 +757,11 @@ def plot_per_cluster_AUC(results, folder_path):
             len_minor = len(res)
         else:
             clust_is_minor = False
-        auc_means_iterations, auc_stdev_iterations, counts_iterations = get_auc_means_iter(res, iterations_to_attack)
+        (
+            auc_means_iterations,
+            auc_stdev_iterations,
+            counts_iterations,
+        ) = get_auc_means_iter(res, iterations_to_attack)
 
         df = pd.DataFrame(
             {
@@ -710,7 +771,9 @@ def plot_per_cluster_AUC(results, folder_path):
                 "Counts": counts_iterations,
             }
         )
-        df.to_csv(os.path.join(Path(folder_path), f"iterations_threshold_clust_{clust}.csv"))
+        df.to_csv(
+            os.path.join(Path(folder_path), f"iterations_threshold_clust_{clust}.csv")
+        )
         if clust_is_minor:
             label = f"Cluster {clust} (Minority)"
         else:
@@ -752,7 +815,9 @@ def plot_loss_distribution(results, folder_path):
         train_count = len(res["per_sample_loss_train"][iterations[0]])
         test_count = len(res["per_sample_loss_test"][iterations[0]])
         smallest_count = min(train_count, test_count)
-        for (iter, tr_data), te_data in zip(res["per_sample_loss_train"].items(), res["per_sample_loss_test"].values()):
+        for (iter, tr_data), te_data in zip(
+            res["per_sample_loss_train"].items(), res["per_sample_loss_test"].values()
+        ):
             tr_data_trunc = tr_data[:smallest_count]
             te_data_trunc = te_data[:smallest_count]
             if iter == "79":
@@ -820,7 +885,9 @@ def compute_rates(results: List[Dict[str, Any]]):
         if not res["per_sample_pred_test"]:
             return None, None  # exp was manually stop, not have the correct data
         last_iter = str(max([int(x) for x in res["per_sample_pred_test"].keys()]))
-        for (iter, pred), (_, true) in zip(res["per_sample_pred_test"].items(), res["per_sample_true_test"].items()):
+        for (iter, pred), (_, true) in zip(
+            res["per_sample_pred_test"].items(), res["per_sample_true_test"].items()
+        ):
             # for now only care about the last iteration
             if iter == last_iter:
                 # print("lenght:", len(pred), len(true))
@@ -829,8 +896,13 @@ def compute_rates(results: List[Dict[str, Any]]):
                 per_cluster_rates[cluster]["TN"].append(tn)
                 per_cluster_rates[cluster]["FP"].append(fp)
                 per_cluster_rates[cluster]["FN"].append(fn)
-    per_class_rates = {k: {kk: np.mean(vv, axis=0) for kk, vv in v.items()} for k, v in per_cluster_rates.items()}
-    per_cluster_rates = {k: {kk: np.sum(vv) for kk, vv in v.items()} for k, v in per_class_rates.items()}
+    per_class_rates = {
+        k: {kk: np.mean(vv, axis=0) for kk, vv in v.items()}
+        for k, v in per_cluster_rates.items()
+    }
+    per_cluster_rates = {
+        k: {kk: np.sum(vv) for kk, vv in v.items()} for k, v in per_class_rates.items()
+    }
     return per_class_rates, per_cluster_rates
 
 
@@ -883,7 +955,9 @@ def compute_confusion_matrix(y_true, y_pred_topk, labels):
     return cnf_matrix
 
 
-def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]], folder_path, config=None):
+def plot_per_class_demographic_parity(
+    per_class_rates: Dict[int, Dict[str, int]], folder_path, config=None
+):
     """Compute and plot the demographic parity with S the sensitive attribute beeing the cluster belonging of each node.
         TP + FP / all preds
     Args:
@@ -891,10 +965,20 @@ def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]]
         folder_path (_type_): _description_
     """
     clusters = list(per_class_rates.keys())
-    pos_preds_0 = per_class_rates[clusters[0]]["TP"] + per_class_rates[clusters[0]]["FP"]
-    tot_0 = np.sum([per_class_rates[clusters[0]][k] for k in per_class_rates[clusters[0]].keys()], axis=0)
-    pos_preds_1 = per_class_rates[clusters[1]]["TP"] + per_class_rates[clusters[1]]["FP"]
-    tot_1 = np.sum([per_class_rates[clusters[1]][k] for k in per_class_rates[clusters[1]].keys()], axis=0)
+    pos_preds_0 = (
+        per_class_rates[clusters[0]]["TP"] + per_class_rates[clusters[0]]["FP"]
+    )
+    tot_0 = np.sum(
+        [per_class_rates[clusters[0]][k] for k in per_class_rates[clusters[0]].keys()],
+        axis=0,
+    )
+    pos_preds_1 = (
+        per_class_rates[clusters[1]]["TP"] + per_class_rates[clusters[1]]["FP"]
+    )
+    tot_1 = np.sum(
+        [per_class_rates[clusters[1]][k] for k in per_class_rates[clusters[1]].keys()],
+        axis=0,
+    )
 
     demo_parity = abs(pos_preds_0 / tot_0 - pos_preds_1 / tot_1)
     all = np.mean(demo_parity)
@@ -920,7 +1004,9 @@ def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]]
     plt.savefig(os.path.join(folder_path, "demographic_parity.png"), dpi=300)
 
 
-def per_class_equalized_odds(per_class_rates: Dict[int, Dict[str, int]], folder_path, config=None):
+def per_class_equalized_odds(
+    per_class_rates: Dict[int, Dict[str, int]], folder_path, config=None
+):
     """Compute and plot the equal opportunities with S the sensitive attribute beeing the cluster belonging of each node.
     Requires that each group has the same recall.
     TP / (TP + FN) (per cluster true positive rate == recall)

@@ -85,7 +85,9 @@ class CurrentModelSharingFair(CurrentModelSharing):
         my_uid = self.mapping.get_uid(self.rank, self.machine_id)
         data["model_idx"] = model_idx
         data["fair_metric"] = fair_metric
-        data["degree"] = degree if degree is not None else len(self.graph.neighbors(my_uid))
+        data["degree"] = (
+            degree if degree is not None else len(self.graph.neighbors(my_uid))
+        )
         data["iteration"] = self.communication_round
         return data
 
@@ -110,7 +112,11 @@ class CurrentModelSharingFair(CurrentModelSharing):
                 del data["model_idx"]
                 del data["CHANNEL"]
                 del data["fair_metric"]
-                logging.debug("Averaging model from neighbor {} of iteration {}".format(n, iteration))
+                logging.debug(
+                    "Averaging model from neighbor {} of iteration {}".format(
+                        n, iteration
+                    )
+                )
                 data = self.deserialized_model(data)
                 if model_idx in received_models:
                     received_models[model_idx].append(data)
@@ -131,7 +137,9 @@ class CurrentModelSharingFair(CurrentModelSharing):
                 weight = 1 / (len(all_recieved) + 1)
                 # initialize
                 # 0 = 1 ??
-                shared_layers = [weight * param for param in self.models[0].get_shared_layers()]
+                shared_layers = [
+                    weight * param for param in self.models[0].get_shared_layers()
+                ]
                 tmp_model = copy.deepcopy(self.models[0])
                 for state_dict in all_recieved:
                     tmp_model.load_state_dict(state_dict)
@@ -167,12 +175,19 @@ class CurrentModelSharingFair(CurrentModelSharing):
             for idx, fair_metric in received_fair_metrics.items():
                 logging.debug(f"Fairness list for model {idx}: {fair_metric}")
                 self.fair_metric_dict[idx] = torch.stack(fair_metric, dim=0).mean(dim=0)
-                logging.debug(f"Fairness metric for model {idx}: {self.fair_metric_dict[idx]}")
+                logging.debug(
+                    f"Fairness metric for model {idx}: {self.fair_metric_dict[idx]}"
+                )
 
             # update other, the mean of all the other
             for idx in self.fair_metric_dict:
                 other_fair_metric = torch.stack(
-                    [self.fair_metric_dict[i] for i in self.fair_metric_dict if i != idx], dim=0
+                    [
+                        self.fair_metric_dict[i]
+                        for i in self.fair_metric_dict
+                        if i != idx
+                    ],
+                    dim=0,
                 ).mean(dim=0)
                 self.fair_metric_dict_other[idx] = other_fair_metric
 

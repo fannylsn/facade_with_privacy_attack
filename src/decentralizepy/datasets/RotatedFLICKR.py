@@ -238,9 +238,13 @@ class BasicBlock(nn.Module):
 
     def __init__(self, in_planes, planes, stride=1):
         super(BasicBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(
+            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
+        )
         self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(
+            planes, planes, kernel_size=3, stride=1, padding=1, bias=False
+        )
         self.bn2 = nn.BatchNorm2d(planes)
 
         self.shortcut = nn.Sequential()
@@ -428,9 +432,15 @@ class ResNet8(Model):
 
         self.conv1 = nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(32)
-        self.layer1 = self._make_layer(block, 32, num_blocks[0], stride=1)  # reduce from 128
-        self.layer2 = self._make_layer(block, 64, num_blocks[1], stride=2)  # reduce from 256
-        self.layer3 = self._make_layer(block, 128, num_blocks[2], stride=2)  # reduce from 512
+        self.layer1 = self._make_layer(
+            block, 32, num_blocks[0], stride=1
+        )  # reduce from 128
+        self.layer2 = self._make_layer(
+            block, 64, num_blocks[1], stride=2
+        )  # reduce from 256
+        self.layer3 = self._make_layer(
+            block, 128, num_blocks[2], stride=2
+        )  # reduce from 512
         self.linear1 = nn.Linear(128, num_classes)
         # self.dropout = nn.Dropout(0.5)
         # self.emb = nn.Embedding(num_classes, num_classes)
@@ -501,7 +511,9 @@ class ResNet8(Model):
             for name, param in self.named_parameters():
                 if name not in self.current_head:
                     param.copy_(shared_layers.pop(0))
-        assert len(shared_layers) == 0, "The shared_layers list should be empty after setting."
+        assert (
+            len(shared_layers) == 0
+        ), "The shared_layers list should be empty after setting."
 
     def deepcopy(self):
         """not deep carefull"""
@@ -565,9 +577,15 @@ class ResNet8Split(Model):
 
         self.conv1 = nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(32)
-        self.layer1 = self._make_layer(block, 32, num_blocks[0], stride=1)  # reduce from 128
-        self.layer2 = self._make_layer(block, 64, num_blocks[1], stride=2)  # reduce from 256
-        self.layer3 = self._make_layer(block, 128, num_blocks[2], stride=2)  # reduce from 512
+        self.layer1 = self._make_layer(
+            block, 32, num_blocks[0], stride=1
+        )  # reduce from 128
+        self.layer2 = self._make_layer(
+            block, 64, num_blocks[1], stride=2
+        )  # reduce from 256
+        self.layer3 = self._make_layer(
+            block, 128, num_blocks[2], stride=2
+        )  # reduce from 512
         self.linear1 = nn.Linear(128, num_classes)
         # self.dropout = nn.Dropout(0.5)
         # self.emb = nn.Embedding(num_classes, num_classes)

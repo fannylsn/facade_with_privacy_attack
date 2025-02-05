@@ -1,17 +1,18 @@
 import logging
 from typing import List
+
+import numpy as np
 import torch
 import torchvision
-from torchvision.transforms import Compose, ToTensor, Normalize
-import numpy as np
-from torch.utils.data import Subset
-from decentralizepy.datasets.DatasetClustered import DatasetClustered
-from decentralizepy.datasets.Partitioner import DataPartitioner
-from decentralizepy.models.Model import Model
-from decentralizepy.mappings.Mapping import Mapping
-
 from torch import nn
 from torch.nn import functional as F
+from torch.utils.data import Subset
+from torchvision.transforms import Compose, Normalize, ToTensor
+
+from decentralizepy.datasets.DatasetClustered import DatasetClustered
+from decentralizepy.datasets.Partitioner import DataPartitioner
+from decentralizepy.mappings.Mapping import Mapping
+from decentralizepy.models.Model import Model
 
 NUM_CLASSES = 10
 CLASSES = {
@@ -26,6 +27,7 @@ CLASSES = {
     8: "ship",
     9: "truck",
 }
+
 
 class LabelClusterCIFAR(DatasetClustered):
     """
@@ -105,8 +107,6 @@ class LabelClusterCIFAR(DatasetClustered):
 
         if self.__testing__:
             self.load_testset()
-
-
 
     def get_label_groups(self):
         """
@@ -193,10 +193,12 @@ class LabelClusterCIFAR(DatasetClustered):
         -------
         torchvision.transforms.Compose
         """
-        return Compose([
-            ToTensor(),
-            Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ])
+        return Compose(
+            [
+                ToTensor(),
+                Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ]
+        )
 
     def load_trainset(self):
         """
@@ -230,7 +232,9 @@ class LabelClusterCIFAR(DatasetClustered):
         )
         cluster_data = self.cluster_data_partitioner.use(self.cluster)
 
-        data_sizes = [size / sum(self.sizes[self.cluster]) for size in self.sizes[self.cluster]]
+        data_sizes = [
+            size / sum(self.sizes[self.cluster]) for size in self.sizes[self.cluster]
+        ]
         self.data_partitioner = DataPartitioner(
             cluster_data, sizes=data_sizes, seed=self.random_seed
         )
@@ -258,10 +262,8 @@ class LabelClusterCIFAR(DatasetClustered):
                 generator=torch.Generator().manual_seed(self.random_seed),
             )
             logging.info(f"The validation set has {len(self.validationset)} samples.")
-        
+
         logging.info(f"The test set has {len(self.testset)} samples.")
-
-
 
 
 class LeNet(Model):
@@ -385,7 +387,9 @@ class LeNet(Model):
             for name, param in self.named_parameters():
                 if name not in self.current_head:
                     param.copy_(shared_layers.pop(0))
-        assert len(shared_layers) == 0, "The shared_layers list should be empty after setting."
+        assert (
+            len(shared_layers) == 0
+        ), "The shared_layers list should be empty after setting."
 
     def freeze_body(self):
         """Freeze the body of the network."""

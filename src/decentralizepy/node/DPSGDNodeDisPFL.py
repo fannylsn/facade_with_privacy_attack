@@ -92,7 +92,9 @@ class DPSGDNodeDisPFL(DPSGDWithPeerSamplerNIID):
         # mask some model weights
         for name in self.mask:
             self.model_params[name] = self.model_params[name] * self.mask[name]
-            self.updates_matrix[name] = self.updates_matrix[name] - self.updates_matrix[name]
+            self.updates_matrix[name] = (
+                self.updates_matrix[name] - self.updates_matrix[name]
+            )
 
         # TODO ???
         self.dist_locals = np.zeros(shape=(self.n_procs, self.n_procs))
@@ -111,7 +113,11 @@ class DPSGDNodeDisPFL(DPSGDWithPeerSamplerNIID):
             self.dist_locals[self.uid][self.uid], total_dis = self.hamming_distance(
                 mask_pers_shared_last_round, self.mask
             )
-            logging.info("local mask changes: {} / {}".format(self.dist_locals[self.uid][self.uid], total_dis))
+            logging.info(
+                "local mask changes: {} / {}".format(
+                    self.dist_locals[self.uid][self.uid], total_dis
+                )
+            )
 
             # TODO prob useless we have peersampler
             nei_indexs = self._benefit_choose(
@@ -159,7 +165,11 @@ class DPSGDNodeDisPFL(DPSGDWithPeerSamplerNIID):
 
             while not self.received_from_all():
                 sender, data = self.receive_DPSGD()
-                logging.debug("Received Model from {} of iteration {}".format(sender, data["iteration"]))
+                logging.debug(
+                    "Received Model from {} of iteration {}".format(
+                        sender, data["iteration"]
+                    )
+                )
                 if sender not in self.peer_deques:
                     self.peer_deques[sender] = deque()
 
@@ -218,7 +228,9 @@ class DPSGDNodeDisPFL(DPSGDWithPeerSamplerNIID):
         if self.model.shared_parameters_counter is not None:
             logging.info("Saving the shared parameter counts")
             with open(
-                os.path.join(self.log_dir, "{}_shared_parameters.json".format(self.rank)),
+                os.path.join(
+                    self.log_dir, "{}_shared_parameters.json".format(self.rank)
+                ),
                 "w",
             ) as of:
                 json.dump(self.model.shared_parameters_counter.numpy().tolist(), of)
@@ -245,15 +257,21 @@ class DPSGDNodeDisPFL(DPSGDWithPeerSamplerNIID):
     ):
         if client_num_in_total == client_num_per_round:
             # If one can communicate with all others and there is no bandwidth limit
-            client_indexes = [client_index for client_index in range(client_num_in_total)]
+            client_indexes = [
+                client_index for client_index in range(client_num_in_total)
+            ]
             return client_indexes
 
         if cs == "random":
             # Random selection of available clients
             num_clients = min(client_num_per_round, client_num_in_total)
-            client_indexes = np.random.choice(range(client_num_in_total), num_clients, replace=False)
+            client_indexes = np.random.choice(
+                range(client_num_in_total), num_clients, replace=False
+            )
             while cur_clnt in client_indexes:
-                client_indexes = np.random.choice(range(client_num_in_total), num_clients, replace=False)
+                client_indexes = np.random.choice(
+                    range(client_num_in_total), num_clients, replace=False
+                )
 
         elif cs == "ring":
             # Ring Topology in Decentralized setting
@@ -264,5 +282,7 @@ class DPSGDNodeDisPFL(DPSGDWithPeerSamplerNIID):
         elif cs == "full":
             # Fully-connected Topology in Decentralized setting
             client_indexes = np.array(np.where(active_ths_rnd == 1)).squeeze()
-            client_indexes = np.delete(client_indexes, int(np.where(client_indexes == cur_clnt)[0]))
+            client_indexes = np.delete(
+                client_indexes, int(np.where(client_indexes == cur_clnt)[0])
+            )
         return client_indexes

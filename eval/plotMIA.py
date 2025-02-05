@@ -30,8 +30,12 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
                 results.append(json.load(inf))
     print("Files", files)
     for res in results:
-        res["per_sample_loss_train"] = {k: json.loads(v) for k, v in res["per_sample_loss_train"].items()}
-        res["per_sample_loss_test"] = {k: json.loads(v) for k, v in res["per_sample_loss_test"].items()}
+        res["per_sample_loss_train"] = {
+            k: json.loads(v) for k, v in res["per_sample_loss_train"].items()
+        }
+        res["per_sample_loss_test"] = {
+            k: json.loads(v) for k, v in res["per_sample_loss_test"].items()
+        }
     plt.figure(1)
     plot_loss_distribution(results, folder_path)
     plt.figure(2)
@@ -42,7 +46,9 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
 def plot_AUC(results, folder_path):
     iterations_to_attack = list(results[0]["per_sample_loss_train"].keys())
-    auc_means_iterations, auc_stdev_iterations, counts_iterations = get_auc_means_iter(results, iterations_to_attack)
+    auc_means_iterations, auc_stdev_iterations, counts_iterations = get_auc_means_iter(
+        results, iterations_to_attack
+    )
 
     df = pd.DataFrame(
         {
@@ -94,7 +100,11 @@ def plot_per_cluster_AUC(results, folder_path):
             len_minor = len(res)
         else:
             clust_is_minor = False
-        auc_means_iterations, auc_stdev_iterations, counts_iterations = get_auc_means_iter(res, iterations_to_attack)
+        (
+            auc_means_iterations,
+            auc_stdev_iterations,
+            counts_iterations,
+        ) = get_auc_means_iter(res, iterations_to_attack)
 
         df = pd.DataFrame(
             {
@@ -104,7 +114,9 @@ def plot_per_cluster_AUC(results, folder_path):
                 "Counts": counts_iterations,
             }
         )
-        df.to_csv(os.path.join(Path(folder_path), f"iterations_threshold_clust_{clust}.csv"))
+        df.to_csv(
+            os.path.join(Path(folder_path), f"iterations_threshold_clust_{clust}.csv")
+        )
         if clust_is_minor:
             label = f"Cluster {clust} (Minority)"
         else:
@@ -146,7 +158,9 @@ def plot_loss_distribution(results, folder_path):
         train_count = len(res["per_sample_loss_train"][iterations[0]])
         test_count = len(res["per_sample_loss_test"][iterations[0]])
         smallest_count = min(train_count, test_count)
-        for (iter, tr_data), te_data in zip(res["per_sample_loss_train"].items(), res["per_sample_loss_test"].values()):
+        for (iter, tr_data), te_data in zip(
+            res["per_sample_loss_train"].items(), res["per_sample_loss_test"].values()
+        ):
             tr_data_trunc = tr_data[:smallest_count]
             te_data_trunc = te_data[:smallest_count]
             if iter == "79":

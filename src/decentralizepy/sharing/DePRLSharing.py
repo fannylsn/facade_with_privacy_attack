@@ -25,7 +25,11 @@ class DePRLSharing(Sharing):
                 del data["degree"]
                 del data["iteration"]
                 del data["CHANNEL"]
-                logging.debug("Averaging model from neighbor {} of iteration {}".format(n, iteration))
+                logging.debug(
+                    "Averaging model from neighbor {} of iteration {}".format(
+                        n, iteration
+                    )
+                )
                 data = self.deserialized_model(data)
                 # Metro-Hastings
                 weight = 1 / (max(len(peer_deques), degree) + 1)

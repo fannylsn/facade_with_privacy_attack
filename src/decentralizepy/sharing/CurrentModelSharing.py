@@ -96,7 +96,9 @@ class CurrentModelSharing(Sharing):
         data = self.serialized_model()
         my_uid = self.mapping.get_uid(self.rank, self.machine_id)
         data["model_idx"] = model_idx
-        data["degree"] = degree if degree is not None else len(self.graph.neighbors(my_uid))
+        data["degree"] = (
+            degree if degree is not None else len(self.graph.neighbors(my_uid))
+        )
         data["iteration"] = self.communication_round
         return data
 
@@ -118,7 +120,11 @@ class CurrentModelSharing(Sharing):
                 del data["iteration"]
                 del data["model_idx"]
                 del data["CHANNEL"]
-                logging.debug("Averaging model from neighbor {} of iteration {}".format(n, iteration))
+                logging.debug(
+                    "Averaging model from neighbor {} of iteration {}".format(
+                        n, iteration
+                    )
+                )
                 data = self.deserialized_model(data)
                 if model_idx in received_models:
                     received_models[model_idx].append(data)
@@ -133,7 +139,10 @@ class CurrentModelSharing(Sharing):
                 weight = 1 / (len(all_recieved) + 1)
                 # initialize
                 # 0 = 1 ??
-                shared_layers = [weight * param.clone() for param in self.models[0].get_shared_layers()]
+                shared_layers = [
+                    weight * param.clone()
+                    for param in self.models[0].get_shared_layers()
+                ]
                 tmp_model = self.models[0].deepcopy()
                 for state_dict in all_recieved:
                     tmp_model.load_state_dict(state_dict)

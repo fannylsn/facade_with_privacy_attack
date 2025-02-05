@@ -67,7 +67,11 @@ class MuffliatoSharing(CurrentModelSharing):
                 del data["iteration"]
                 del data["model_idx"]
                 del data["CHANNEL"]
-                logging.debug("Averaging model from neighbor {} of iteration {}".format(n, iteration))
+                logging.debug(
+                    "Averaging model from neighbor {} of iteration {}".format(
+                        n, iteration
+                    )
+                )
                 data = self.deserialized_model(data)
                 if model_idx in received_models:
                     received_models[model_idx].append(data)
@@ -119,7 +123,11 @@ class MuffliatoSharing(CurrentModelSharing):
                 del data["iteration"]
                 del data["model_idx"]
                 del data["CHANNEL"]
-                logging.debug("Averaging model from neighbor {} of iteration {}".format(n, iteration))
+                logging.debug(
+                    "Averaging model from neighbor {} of iteration {}".format(
+                        n, iteration
+                    )
+                )
                 data = self.deserialized_model(data)
                 if model_idx in received_models:
                     received_models[model_idx].append(data)

@@ -11,10 +11,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 sys.path.append("/eval/")
-from plotIDCA import (
-    CIFAR_CLASSES,
-    compute_rates,
-)
+from plotIDCA import CIFAR_CLASSES, compute_rates
 
 CONFIGS = ["leak_2", "leak_3", "leak_1", "leak_5", "no_leak"]
 
@@ -77,7 +74,9 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
                 continue
             files = os.listdir(mf_path)
             files = [f for f in files if f.endswith("_results.json")]
-            files = [f for f in files if not f.startswith("-1")]  # remove server in IFCA
+            files = [
+                f for f in files if not f.startswith("-1")
+            ]  # remove server in IFCA
             for f in files:
                 filepath = os.path.join(mf_path, f)
                 with open(filepath, "r") as inf:
@@ -298,10 +297,17 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
             plot_cluster_variation(subdir_path, results)
 
         # faireness
-        if "per_sample_pred_test" in results[0].keys() and results[0]["per_sample_pred_test"]:
+        if (
+            "per_sample_pred_test" in results[0].keys()
+            and results[0]["per_sample_pred_test"]
+        ):
             for res in results:
-                res["per_sample_pred_test"] = {k: json.loads(v) for k, v in res["per_sample_pred_test"].items()}
-                res["per_sample_true_test"] = {k: json.loads(v) for k, v in res["per_sample_true_test"].items()}
+                res["per_sample_pred_test"] = {
+                    k: json.loads(v) for k, v in res["per_sample_pred_test"].items()
+                }
+                res["per_sample_true_test"] = {
+                    k: json.loads(v) for k, v in res["per_sample_true_test"].items()
+                }
             per_class_rates, per_cluster_rates = compute_rates(results)
             plt.figure(40)
             plot_per_class_demographic_parity(per_class_rates, folder_path, config)
@@ -310,7 +316,11 @@ def plot_results(folder_path, data_machine="machine0", data_node=0):
 
 
 def plot_cluster_model_evolution(folder_path, results):
-    data = [(x["cluster_assigned"], int(k), v) for x in results for k, v in x["test_best_model_idx"].items()]
+    data = [
+        (x["cluster_assigned"], int(k), v)
+        for x in results
+        for k, v in x["test_best_model_idx"].items()
+    ]
     clusters = set([x[0] for x in data])
     models = set([x[2] for x in data])
     max_iter = max([el[1] for el in data])
@@ -346,12 +356,21 @@ def plot_cluster_model_evolution(folder_path, results):
 
 
 def plot_final_cluster_model_attribution(folder_path, results):
-    max_iter = max([int(iter) for x in results for iter in x["test_best_model_idx"].keys()])
+    max_iter = max(
+        [int(iter) for x in results for iter in x["test_best_model_idx"].keys()]
+    )
 
-    data = [(x["cluster_assigned"], x["test_best_model_idx"][str(max_iter)]) for x in results]
+    data = [
+        (x["cluster_assigned"], x["test_best_model_idx"][str(max_iter)])
+        for x in results
+    ]
     df = pd.DataFrame(data, columns=["Cluster Assigned", "Best Model"])
-    heatmap_data = df.groupby(["Cluster Assigned", "Best Model"]).size().reset_index(name="Count")
-    heatmap_matrix = heatmap_data.pivot(index="Cluster Assigned", columns="Best Model", values="Count").fillna(0)
+    heatmap_data = (
+        df.groupby(["Cluster Assigned", "Best Model"]).size().reset_index(name="Count")
+    )
+    heatmap_matrix = heatmap_data.pivot(
+        index="Cluster Assigned", columns="Best Model", values="Count"
+    ).fillna(0)
     sns.heatmap(heatmap_matrix, annot=True, fmt="g", cmap="YlGnBu")
     plt.title("Heatmap of Data Distribution")
     plt.savefig(os.path.join(folder_path, "cluster_model_distribution.png"), dpi=300)
@@ -379,7 +398,9 @@ def plot_cluster_variation(folder_path, results):
     plt.close()
 
 
-def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]], folder_path, config):
+def plot_per_class_demographic_parity(
+    per_class_rates: Dict[int, Dict[str, int]], folder_path, config
+):
     """Compute and plot the demographic parity with S the sensitive attribute beeing the cluster belonging of each node.
         TP + FP / all preds
     Args:
@@ -387,10 +408,20 @@ def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]]
         folder_path (_type_): _description_
     """
     clusters = list(per_class_rates.keys())
-    pos_preds_0 = per_class_rates[clusters[0]]["TP"] + per_class_rates[clusters[0]]["FP"]
-    tot_0 = np.sum([per_class_rates[clusters[0]][k] for k in per_class_rates[clusters[0]].keys()], axis=0)
-    pos_preds_1 = per_class_rates[clusters[1]]["TP"] + per_class_rates[clusters[1]]["FP"]
-    tot_1 = np.sum([per_class_rates[clusters[1]][k] for k in per_class_rates[clusters[1]].keys()], axis=0)
+    pos_preds_0 = (
+        per_class_rates[clusters[0]]["TP"] + per_class_rates[clusters[0]]["FP"]
+    )
+    tot_0 = np.sum(
+        [per_class_rates[clusters[0]][k] for k in per_class_rates[clusters[0]].keys()],
+        axis=0,
+    )
+    pos_preds_1 = (
+        per_class_rates[clusters[1]]["TP"] + per_class_rates[clusters[1]]["FP"]
+    )
+    tot_1 = np.sum(
+        [per_class_rates[clusters[1]][k] for k in per_class_rates[clusters[1]].keys()],
+        axis=0,
+    )
 
     demo_parity = abs(pos_preds_0 / tot_0 - pos_preds_1 / tot_1)
 
@@ -399,11 +430,17 @@ def plot_per_class_demographic_parity(per_class_rates: Dict[int, Dict[str, int]]
     plt.ylabel("Absolute difference in accuracy")
     plt.xlabel("Classes")
     plt.legend(loc="upper right")
-    plt.xticks(range(len(demo_parity)), [CIFAR_CLASSES[i] for i in range(len(demo_parity))], rotation=45)
+    plt.xticks(
+        range(len(demo_parity)),
+        [CIFAR_CLASSES[i] for i in range(len(demo_parity))],
+        rotation=45,
+    )
     plt.savefig(os.path.join(folder_path, "demographic_parity.png"), dpi=300)
 
 
-def plot_per_class_equal_opportunities(per_class_rates: Dict[int, Dict[str, int]], folder_path, config):
+def plot_per_class_equal_opportunities(
+    per_class_rates: Dict[int, Dict[str, int]], folder_path, config
+):
     """Compute and plot the equal opportunities with S the sensitive attribute beeing the cluster belonging of each node.
     Requires that each group has the same recall.
     TP / (TP + FN) (per cluster true positive rate == recall)
@@ -426,7 +463,9 @@ def plot_per_class_equal_opportunities(per_class_rates: Dict[int, Dict[str, int]
     plt.ylabel("Absolute difference in recall")
     plt.xlabel("Classes")
     plt.legend(loc="upper right")
-    plt.xticks(range(len(eq_op)), [CIFAR_CLASSES[i] for i in range(len(eq_op))], rotation=45)
+    plt.xticks(
+        range(len(eq_op)), [CIFAR_CLASSES[i] for i in range(len(eq_op))], rotation=45
+    )
     plt.savefig(os.path.join(folder_path, "equal_opportunities.png"), dpi=300)
 
 
