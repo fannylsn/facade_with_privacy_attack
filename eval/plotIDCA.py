@@ -32,7 +32,7 @@ DATA_CLASSES = FLICKR_CLASSES
 plt.rcParams.update({"font.size": 20})
 plt.rc("legend", fontsize=18)
 
-CLUSTER_NAMES = {0: "A", 1: "B", 2: "C"}
+CLUSTER_NAMES = {0: "A", 1: "B", 2: "C", 3: "D"}
 
 
 def get_stats(data):
