@@ -24,7 +24,6 @@ CLASSES = {
     9: "truck",
 }
 
-
 class RotatedCIFAR(RotatedDataset):
     """
     Class for the Rotated CIFAR dataset
@@ -92,16 +91,22 @@ class RotatedCIFAR(RotatedDataset):
             number_of_clusters,
             top_k_acc=top_k_acc,
         )
+        self.partition_niid = partition_niid
+        self.alpha = alpha
+        self.shards = shards
 
         self.num_classes = NUM_CLASSES
 
-        self.transform = torchvision.transforms.Compose(
-            [
-                torchvision.transforms.ToTensor(),
-                torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                self.get_rotation_transform(),
-            ]
-        )
+        self.transform_dict = {
+            cid: torchvision.transforms.Compose(
+                [
+                    torchvision.transforms.ToTensor(),
+                    torchvision.transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                    self.get_rotation_transform(cid),
+                ]
+            )
+            for cid in range(self.number_of_clusters)
+        }
 
         if self.__training__:
             self.load_trainset()
@@ -109,11 +114,11 @@ class RotatedCIFAR(RotatedDataset):
         if self.__testing__:
             self.load_testset()
 
-    def get_dataset_object(self, train: bool = True) -> torch.utils.data.Dataset:
+    def get_dataset_object(self, train: bool = True, cluster_id=None) -> torch.utils.data.Dataset:
         """Get the dataset object from torchvision or the filesystem."""
+        cid = cluster_id if cluster_id is not None else self.cluster
         dataset = torchvision.datasets.CIFAR10(
-            root=self.train_dir, train=train, download=True, transform=self.transform
-        )
+            root=self.train_dir, train=train, download=True, transform=self.transform_dict[cid])
         return dataset
 
 
@@ -123,8 +128,11 @@ class LeNet(Model):
     Inspired by original LeNet network for MNIST: https://ieeexplore.ieee.org/abstract/document/726791
 
     """
-
+    # Uncomment the following lines to add/remove layers to/from the head 
     HEAD_LAYERS = ["fc1.weight", "fc1.bias"]
+    # HEAD_LAYERS = []
+    # HEAD_LAYERS = ["conv3.weight", "conv3.bias", "fc1.weight", "fc1.bias"]
+    # HEAD_LAYERS = ["conv1.weight", "conv1.bias", "conv2.weight", "conv2.bias", "conv3.weight", "conv3.bias", "fc1.weight", "fc1.bias"]
     current_head = HEAD_LAYERS
     HEAD_BUFFERS = []
     current_head_buffers = HEAD_BUFFERS
@@ -144,17 +152,6 @@ class LeNet(Model):
         self.gn3 = nn.GroupNorm(2, 64)
         self.fc1 = nn.Linear(64 * 4 * 4, NUM_CLASSES)
 
-        # Register hook for feature extraction
-        # self.feature_layer_name = feature_layer_name
-        # self._register_hook()
-        # self.reset_features()
-
-    # def deepcopy(self):
-    #     with torch.no_grad():
-    #         model = copy.deepcopy(self)
-    #         model._register_hook()
-    #         return model
-
     def deepcopy(self):
         """not deep carefull"""
         model_state = self.state_dict().copy()
@@ -162,11 +159,6 @@ class LeNet(Model):
         new_model.load_state_dict(model_state)
         # new_model._register_hook()  # Make sure to re-register the hook
         return new_model
-
-    # def shallowcopy(self):
-    #     model = self.clone()
-    #     model._register_hook()
-    #     return model
 
     def _register_hook(self):
         def hook(module, input, output):

@@ -23,6 +23,7 @@ from decentralizepy.node.Node import Node
 from decentralizepy.sharing.CurrentModelSharing import CurrentModelSharing
 from decentralizepy.sharing.CurrentModelSharingFair import CurrentModelSharingFair
 from decentralizepy.sharing.Sharing import Sharing  # noqa: F401
+from decentralizepy.sharing.SharingAttackRandomLoss import SharingAttackRandomLoss
 from decentralizepy.training.TrainingIDCA import TrainingIDCA  # noqa: F401
 from decentralizepy.utils_learning_rates import get_lr_step_7_9
 
@@ -485,16 +486,11 @@ class DPSGDNodeIDCA(Node):
             self.iteration = iteration
 
             # best model choice in done in trainer
-            # self.adjust_learning_rate(iteration)
             treshold_explo = self.compute_treshold(iteration)
             self.handle_sharing()
             self.trainer.train(self.dataset, treshold_explo)
             if len(self.models) >= 2:
-                num_lay_diff = len(
-                    self.trainer.compare_model_parameters(
-                        self.models[0], self.models[1]
-                    )
-                )
+                num_lay_diff = len(self.trainer.compare_model_parameters(self.models[0], self.models[1]))
                 logging.info(f"Model differences after train: {num_lay_diff}")
 
             # sharing
@@ -510,14 +506,9 @@ class DPSGDNodeIDCA(Node):
 
             while not self.received_from_all():
                 sender, data = self.receive_DPSGD()
-                logging.debug(
-                    "Received Model from {} of iteration {}".format(
-                        sender, data["iteration"]
-                    )
-                )
+                logging.debug("Received Model from {} of iteration {}".format(sender, data["iteration"]))
                 if sender not in self.peer_deques:
                     self.peer_deques[sender] = deque()
-
                 if data["iteration"] == iteration:
                     self.peer_deques[sender].appendleft(data)
                 else:
@@ -545,26 +536,20 @@ class DPSGDNodeIDCA(Node):
                 rounds_to_test = self.test_after
 
                 if self.dataset.__testing__:
-                    logging.info("evaluating on test set.")
+                    logging.info("Evaluating on test set.")
                     results_dict = self.eval_on_testset(results_dict, iteration)
 
                 if self.dataset.__validating__:
-                    logging.info("evaluating on validation set.")
+                    logging.info("Evaluating on validation set.")
                     results_dict = self.eval_on_validationset(results_dict, iteration)
                 self.after_eval_step(results_dict)
 
             self.write_results_dict(results_dict)
 
-        # print("return")
-        # return
-
         # Done with all iterations
-        # last_iteration = self.iterations - (self.iterations - 1) % self.train_evaluate_after
         last_iteration = int(list(results_dict["validation_best_model_idx"].keys())[-1])
 
-        final_best_model_idx = results_dict["validation_best_model_idx"][
-            str(last_iteration)
-        ]
+        final_best_model_idx = results_dict["validation_best_model_idx"][str(last_iteration)]
         final_best_model = self.models[final_best_model_idx]
 
         if self.do_all_reduce_models:
@@ -574,9 +559,7 @@ class DPSGDNodeIDCA(Node):
             # final test
             logging.info("Final evaluation (after all-reduce).")
             results_dict = self.get_results_dict(iteration=self.iterations)
-            results_dict = self.compute_best_model_log_train_loss(
-                results_dict, self.iterations
-            )
+            results_dict = self.compute_best_model_log_train_loss(results_dict, self.iterations)
             results_dict = self.eval_on_testset(results_dict, self.iterations)
             results_dict = self.eval_on_validationset(results_dict, self.iterations)
             self.write_results_dict(results_dict)
@@ -585,32 +568,13 @@ class DPSGDNodeIDCA(Node):
 
         if final_best_model.shared_parameters_counter is not None:
             logging.info("Saving the shared parameter counts")
-            with open(
-                os.path.join(
-                    self.log_dir, "{}_shared_parameters.json".format(self.rank)
-                ),
-                "w",
-            ) as of:
+            with open(os.path.join(self.log_dir, "{}_shared_parameters.json".format(self.rank)),"w",) as of:
                 json.dump(self.model.shared_parameters_counter.numpy().tolist(), of)
+
         self.disconnect_neighbors()
         logging.info("Storing final weight")
         final_best_model.dump_weights(self.weights_store_dir, self.uid, iteration)
         logging.info("All neighbors disconnected. Process complete!")
-
-    def adjust_learning_rate(self, iteration: int):
-        """Adjust the learning rate based on the iteration number.
-
-        Args:
-            iteration (int): current iteration
-
-        """
-        ratio = iteration / self.iterations
-        new_params = self.original_optimizer_params.copy()
-        new_params["lr"] = get_lr_step_7_9(ratio, new_params["lr"])
-        logging.debug(f"learning rate: {new_params['lr']}")
-        self.trainer.update_optimizer_params(
-            new_params
-        )  # only updates params of trainer, not node
 
     def compute_treshold(self, iteration: int):
         if iteration < self.iterations / 4:  # NOTE here was 2
@@ -618,13 +582,6 @@ class DPSGDNodeIDCA(Node):
             treshold_explo = 1.0
         else:
             treshold_explo = 0.0
-
-        # if iteration > self.iterations * 2 / 3:
-        #     for model in self.models:
-        #         model.freeze_body()
-        # treshold_explo = np.maximum(1 - iteration * 2 / self.iterations, 0.0)
-        # treshold_explo = np.exp(-iteration * 3 / self.iterations)
-        # treshold_explo = 0.2
         return treshold_explo
 
     def handle_sharing(self):
@@ -647,26 +604,23 @@ class DPSGDNodeIDCA(Node):
 
         """
         for k in self.my_neighbors:
-            if (
-                (k not in self.peer_deques)
+            if ((k not in self.peer_deques)
                 or len(self.peer_deques[k]) == 0
-                or self.peer_deques[k][0]["iteration"] != self.iteration
-            ):
+                or self.peer_deques[k][0]["iteration"] != self.iteration):
                 return False
         return True
 
     def get_results_dict(self, iteration):
         """Get the results dictionary, or create it."""
         if iteration:
-            with open(
-                os.path.join(self.log_dir, "{}_results.json".format(self.rank)),
-                "r",
-            ) as inf:
+            with open(os.path.join(self.log_dir, "{}_results.json".format(self.rank)),"r") as inf:
                 results_dict = json.load(inf)
         else:
             results_dict = {
                 "cluster_assigned": self.dataset.cluster,
+                "victim": self.uid in self.dataset.victim_nodes[self.dataset.cluster],
                 "train_loss": {},
+                "train_best_model_idx": {},
                 "all_train_loss": {str(idx): {} for idx in range(len(self.models))},
                 "test_loss": {},
                 "test_acc": {},
@@ -697,6 +651,8 @@ class DPSGDNodeIDCA(Node):
             Dict: dict containing the results
         """
         results_dict["total_bytes"][iteration + 1] = self.communication.total_bytes
+        
+        results_dict["train_best_model_idx"][str(iteration + 1)] = self.trainer.current_model_idx
 
         if hasattr(self.communication, "total_meta"):
             results_dict["total_meta"][
@@ -714,9 +670,7 @@ class DPSGDNodeIDCA(Node):
         Args:
             results_dict (_type_): _description_
         """
-        with open(
-            os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w"
-        ) as of:
+        with open(os.path.join(self.log_dir, "{}_results.json".format(self.rank)), "w") as of:
             json.dump(results_dict, of)
 
     def compute_best_model_log_train_loss(self, results_dict, iteration):
@@ -728,7 +682,6 @@ class DPSGDNodeIDCA(Node):
             results_dict (dict): Dictionary containing the results
             iteration (int): current iteration
         """
-
         # increase the rounds to have better data average
         training_rounds = self.trainer.rounds
         self.trainer.rounds = 100  # more precise
@@ -745,9 +698,7 @@ class DPSGDNodeIDCA(Node):
 
         results_dict["train_loss"][str(iteration + 1)] = training_loss
         for idx in range(len(self.models)):
-            results_dict["all_train_loss"][str(idx)][str(iteration + 1)] = all_losses[
-                idx
-            ]
+            results_dict["all_train_loss"][str(idx)][str(iteration + 1)] = all_losses[idx]
 
         self.save_plot(
             results_dict["train_loss"],
@@ -770,12 +721,8 @@ class DPSGDNodeIDCA(Node):
             dict: Dictionary containing the results
         """
         loss_func = self.loss_class(reduction="none")
-        per_sample_loss_tr = self.trainer.compute_per_sample_loss(
-            self.dataset, loss_func
-        )
-        results_dict["per_sample_loss_train"][str(iteration + 1)] = json.dumps(
-            per_sample_loss_tr
-        )
+        per_sample_loss_tr = self.trainer.compute_per_sample_loss(self.dataset, loss_func)
+        results_dict["per_sample_loss_train"][str(iteration + 1)] = json.dumps(per_sample_loss_tr)
         return results_dict
 
     def eval_on_testset(self, results_dict: Dict, iteration):
@@ -793,11 +740,20 @@ class DPSGDNodeIDCA(Node):
         ):
             return results_dict
         logging.info("Begin evaluation on test set.")
-        ta, tl, bidx = self.dataset.test(self.models, self.loss)
+        ta, tac, tl, bidx = self.dataset.test(self.models, self.loss)
         # ta, tl, bidx = 0, 0, 0
         results_dict["test_acc"][str(iteration + 1)] = ta
         results_dict["test_loss"][str(iteration + 1)] = tl
         results_dict["test_best_model_idx"][str(iteration + 1)] = bidx
+
+        # Plot overall test accuracy
+        self.save_plot(
+            results_dict["test_acc"],
+            "test_acc",
+            "Test Accuracy",
+            "Communication Rounds",
+            os.path.join(self.log_dir, "{}_test_acc.png".format(self.rank)),
+        )
 
         # log some metrics for MIA and fairness
         logging.info("Begin per sample evaluation on test set.")
@@ -805,9 +761,7 @@ class DPSGDNodeIDCA(Node):
 
         return results_dict
 
-    def compute_log_per_sample_metrics_test(
-        self, results_dict: Dict, iteration: int, best_idx: int
-    ):
+    def compute_log_per_sample_metrics_test(self, results_dict: Dict, iteration: int, best_idx: int):
         """Compute the per sample metrics for the given model, if the flags are set.
         Args:
             results_dict (dict): Dictionary containing the results
@@ -820,37 +774,26 @@ class DPSGDNodeIDCA(Node):
         model = self.models[best_idx]
 
         if self.do_all_reduce_models:
-            log_pred_this_iter = (
-                self.log_per_sample_pred_true and iteration == self.iterations
-            )
+            log_pred_this_iter = (self.log_per_sample_pred_true and iteration == self.iterations)
         else:
-            log_pred_this_iter = (
-                self.log_per_sample_pred_true and iteration == self.iterations - 1
-            )
+            log_pred_this_iter = (self.log_per_sample_pred_true and iteration == self.iterations - 1)
 
-        (
-            per_sample_loss,
-            per_sample_pred,
-            per_sample_true,
+        (per_sample_loss,
+         per_sample_pred,
+         per_sample_true,
         ) = self.dataset.compute_per_sample_loss(
             model, loss_func, False, self.log_per_sample_loss, log_pred_this_iter
         )
         if self.log_per_sample_loss:
-            results_dict["per_sample_loss_test"][str(iteration + 1)] = json.dumps(
-                per_sample_loss
-            )
+            results_dict["per_sample_loss_test"][str(iteration + 1)] = json.dumps(per_sample_loss)
+
         if log_pred_this_iter:
             if isinstance(per_sample_pred[0], list):
-                results_dict["per_sample_pred_test"][
-                    str(iteration + 1)
-                ] = per_sample_pred
+                results_dict["per_sample_pred_test"][str(iteration + 1)] = per_sample_pred
             else:
-                results_dict["per_sample_pred_test"][str(iteration + 1)] = json.dumps(
-                    per_sample_pred
-                )
-            results_dict["per_sample_true_test"][str(iteration + 1)] = json.dumps(
-                per_sample_true
-            )
+                results_dict["per_sample_pred_test"][str(iteration + 1)] = json.dumps(per_sample_pred)
+            results_dict["per_sample_true_test"][str(iteration + 1)] = json.dumps(per_sample_true)
+        
         return results_dict
 
     def eval_on_validationset(self, results_dict: Dict, iteration):
@@ -868,9 +811,8 @@ class DPSGDNodeIDCA(Node):
         va, vl, all_val_loss, bidx = self.dataset.validate(self.models, self.loss)
 
         for idx in range(len(self.models)):
-            results_dict["all_val_loss"][str(idx)][str(iteration + 1)] = all_val_loss[
-                idx
-            ]
+            results_dict["all_val_loss"][str(idx)][str(iteration + 1)] = all_val_loss[idx]
+
         self.save_plot_models(results_dict["all_val_loss"], "validation")
 
         results_dict["validation_acc"][str(iteration + 1)] = va
@@ -878,9 +820,7 @@ class DPSGDNodeIDCA(Node):
         results_dict["validation_best_model_idx"][str(iteration + 1)] = bidx
         return results_dict
 
-    def compute_log_per_sample_loss_val(
-        self, results_dict: Dict, iteration: int, best_idx: int
-    ):
+    def compute_log_per_sample_loss_val(self, results_dict: Dict, iteration: int, best_idx: int):
         """Not used currently. Compute the per sample loss for the current model.
 
         Args:
@@ -891,12 +831,8 @@ class DPSGDNodeIDCA(Node):
         """
         loss_func = self.loss_class(reduction="none")
         model = self.models[best_idx]
-        per_sample_loss_val = self.dataset.compute_per_sample_loss(
-            model, loss_func, validation=True
-        )
-        results_dict["per_sample_loss_val"][str(iteration + 1)] = json.dumps(
-            per_sample_loss_val
-        )
+        per_sample_loss_val = self.dataset.compute_per_sample_loss(model, loss_func, validation=True)
+        results_dict["per_sample_loss_val"][str(iteration + 1)] = json.dumps(per_sample_loss_val)
         return results_dict
 
     def save_plot(self, coords, label, title, xlabel, filename):
@@ -959,10 +895,9 @@ class DPSGDNodeIDCA(Node):
             Averaged model
 
         """
-        if (
-            self.sharing_class != CurrentModelSharing
-            and self.sharing_class != CurrentModelSharingFair
-        ):
+        if (self.sharing_class != CurrentModelSharing
+            and self.sharing_class != CurrentModelSharingFair 
+            and self.sharing_class != SharingAttackRandomLoss):
             raise NotImplementedError
 
         fc_graph = FullyConnected(self.n_procs)

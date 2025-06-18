@@ -1,5 +1,5 @@
 import logging
-from random import Random
+import random 
 from typing import List, Union
 
 import torch
@@ -15,7 +15,6 @@ class DatasetClustered(Dataset):
     """
     This class defines the Dataset API for niid clustered data.
     All datasets must follow this API.
-
     """
 
     def __init__(
@@ -32,6 +31,7 @@ class DatasetClustered(Dataset):
         validation_source="",
         validation_size="",
         number_of_clusters: int = 1,
+        victims_per_cluster: int = 2,
         top_k_acc=1,
     ):
         """
@@ -89,22 +89,32 @@ class DatasetClustered(Dataset):
         logging.info("Clusters idx: {}".format(self.clusters_idx))
         logging.info("Cluster: {}".format(self.cluster))
 
+        # Define victim nodes: 2 nodes from cluster 0 and 2 nodes from cluster 1 chosen randomly
+        if self.number_of_clusters > 1:
+            self.victim_nodes = {
+                cluster: random.sample(
+                    [i for i in range(self.num_nodes) if self.clusters_idx[i] == cluster],
+                    min(victims_per_cluster, sum(self.clusters_idx[i] == cluster for i in range(self.num_nodes))),
+                )
+                for cluster in range(self.number_of_clusters)
+            }
+        else:
+            self.victim_nodes = {0: random.sample(self.clusters_idx, victims_per_cluster)}
+        logging.info("Victim nodes: {}".format(self.victim_nodes))
+
         # carefull, we dont duplicated one dataset per rotated clusted like IFCA.
         self.dataset_id = sum(
             [idx == self.cluster for idx in self.clusters_idx[: self.uid]]
         )  # id of the dataset in the cluster of the node
-
         self.top_k_acc = top_k_acc
         logging.debug(f"topk accuracy: {self.top_k_acc}")
 
     def assign_cluster(self):
         """Generate the cluster assignment for the current process."""
-        rng = Random()
+        rng = random.Random()
         rng.seed(self.random_seed)
         if self.sizes is None:
-            self.clusters_idx = [
-                i % self.number_of_clusters for i in range(self.num_nodes)
-            ]
+            self.clusters_idx = [i % self.number_of_clusters for i in range(self.num_nodes)]
         else:
             self.clusters_idx = []
             for idx, size in enumerate(self.sizes):
@@ -115,14 +125,12 @@ class DatasetClustered(Dataset):
     def load_trainset(self):
         """
         Loads the training set. Partitions it if needed.
-
         """
         raise NotImplementedError
 
     def load_testset(self):
         """
         Loads the testing set.
-
         """
         raise NotImplementedError
 
@@ -150,10 +158,6 @@ class DatasetClustered(Dataset):
 
         """
         if self.__training__:
-            # torch.manual_seed(self.random_seed * self.uid)
-            # x = next(iter(DataLoader(self.trainset, batch_size=batch_size, shuffle=shuffle)))
-            # logging.info(f"sample of call dataloader: {x[0][0,0,0]}")
-            # torch.manual_seed(self.random_seed * self.uid)
             return DataLoader(self.trainset, batch_size=batch_size, shuffle=shuffle)
         raise RuntimeError("Training set not initialized!")
 
@@ -194,13 +198,6 @@ class DatasetClustered(Dataset):
         if self.__validating__:
             return DataLoader(self.validationset, batch_size=batchsize, shuffle=Shuffle)
         raise RuntimeError("Validation set not initialized!")
-
-        # def get_validationset(self, batch_size=None, shuffle=False) -> DataLoader:
-        #     if batch_size is None:
-        #         batch_size = self.test_batch_size
-        #     if self.__validating__:
-        #         return DataLoader(self.validationset, batch_size=batch_size, shuffle=shuffle)
-        #     raise RuntimeError("Validation set not initialized!")
 
     def test(self, models: Union[List[Model], Model], loss_func):
         """
@@ -275,12 +272,14 @@ class DatasetClustered(Dataset):
 
         logging.debug(f"Predicted on the test set. Best model is {best_model_idx}")
 
+        accuracy_by_cls = {i: [] for i in range(self.num_classes)}
         for key, value in enumerate(correct_preds_per_cls[best_model_idx]):
             if totals_pred_per_cls[best_model_idx][key] != 0:
                 accuracy = 100 * float(value) / totals_pred_per_cls[best_model_idx][key]
             else:
                 accuracy = 100.0
             logging.debug("Accuracy for class {} is: {:.1f} %".format(key, accuracy))
+            accuracy_by_cls[key].append(accuracy)
 
         accuracy = (
             100
@@ -292,9 +291,9 @@ class DatasetClustered(Dataset):
 
         if only_one_model:
             # compatibility with the previous version
-            return accuracy, final_loss_val
+            return accuracy, accuracy_by_cls, final_loss_val
 
-        return accuracy, final_loss_val, best_model_idx
+        return accuracy, accuracy_by_cls, final_loss_val, best_model_idx
 
     def validate(self, models: Union[List[Model], Model], loss_func):
         """

@@ -13,6 +13,7 @@ from decentralizepy.mappings.Mapping import Mapping
 from decentralizepy.models.Model import Model  # noqa: F401
 from decentralizepy.node.DPSGDNodeIDCA import DPSGDNodeIDCA
 from decentralizepy.sharing.CurrentModelSharing import CurrentModelSharing
+from decentralizepy.sharing.SharingAttackRandomLoss import SharingAttackRandomLoss
 from decentralizepy.sharing.Sharing import Sharing  # noqa: F401
 from decentralizepy.training.TrainingIDCA import TrainingIDCA  # noqa: F401
 
@@ -246,7 +247,7 @@ class DPSGDNodeIDCAwPS(DPSGDNodeIDCA):
         Returns:
             Dict: Data to send to neighbors
         """
-        if self.sharing_class == CurrentModelSharing:
+        if self.sharing_class == CurrentModelSharing or self.sharing_class == SharingAttackRandomLoss:
             # send only one model
             to_send = self.sharing.get_data_to_send(
                 self.trainer.current_model_idx, len(self.my_neighbors)

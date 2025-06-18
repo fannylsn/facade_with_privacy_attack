@@ -32,6 +32,7 @@ class SharingAttackRandomLoss(CurrentModelSharing):
         float_precision=None,
         attack_after=32,
         perform_attack=True, 
+        non_member_attack_data="" 
     ):
         super().__init__(
             rank,
@@ -67,19 +68,27 @@ class SharingAttackRandomLoss(CurrentModelSharing):
 
         self.attack_results = {"loss_vals": {}}
 
-        self.cluster_testset_dataloaders = {
+        cluster_testset_dataloaders = {
             cluster_id: self.dataset.get_testset(
                 cluster_id=cluster_id,
                 attack=self.perform_attack
             ) for cluster_id in range(self.dataset.number_of_clusters)
         }
+        attack_testset = torch.utils.data.ConcatDataset(list(cluster_testset_dataloaders.values()))
 
-        attack_testset = torch.utils.data.ConcatDataset(list(self.cluster_testset_dataloaders.values()))
-        self.attack_test_dataloader = torch.utils.data.DataLoader(
-            attack_testset,
-            batch_size=self.dataset.test_batch_size,
-            shuffle=False
-        )
+        if non_member_attack_data == "UNION":
+            self.attack_non_member_dataloader = torch.utils.data.DataLoader(
+                attack_testset,
+                batch_size=self.dataset.test_batch_size,
+                shuffle=False
+            )
+        elif non_member_attack_data == "TEST_DATA_CLUSTER_0":
+            self.attack_non_member_dataloader = cluster_testset_dataloaders[0]
+        elif non_member_attack_data == "TEST_DATA_CLUSTER_1":
+            self.attack_non_member_dataloader = cluster_testset_dataloaders[1]
+        else:
+            raise ValueError("Invalid non_member_attack_data option. Choose from 'UNION', 'TEST_DATA_CLUSTER_0', or 'TEST_DATA_CLUSTER_1'.")
+
         self.train_dir = self.dataset.train_dir
 
         self.mia = LOSSMIA()
@@ -136,8 +145,7 @@ class SharingAttackRandomLoss(CurrentModelSharing):
                             attack_loss = self.mia.attack_dataset(
                                 self.victim_model,  # get the model of the client we attack
                                 self.client_trainset_dataloaders[client_id],  # get trainset of the client we attack
-                                self.cluster_testset_dataloaders[1],  # get testset of the attacker
-                                #self.attack_test_dataloader
+                                self.attack_non_member_dataloader  # get non-member dataset
                             )
                             
                             if client_id not in self.attack_results["loss_vals"]:

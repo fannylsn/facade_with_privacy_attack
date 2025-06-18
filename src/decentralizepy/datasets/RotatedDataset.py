@@ -5,6 +5,7 @@ import torchvision
 
 from decentralizepy.datasets.DatasetClustered import DatasetClustered
 from decentralizepy.datasets.Partitioner import DataPartitioner
+from torch.utils.data import DataLoader
 
 
 class RotatedDataset(DatasetClustered):
@@ -12,7 +13,11 @@ class RotatedDataset(DatasetClustered):
     Class for Rotated dataset (used to simulate non IID data).
     """
 
-    def get_rotation_transform(self) -> torchvision.transforms.RandomRotation:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.rotation_angle = 0  # Initialize rotation angle attribute
+
+    def get_rotation_transform(self, cluster_id=None) -> torchvision.transforms.RandomRotation:
         """
         Returns a rotation transform based on the cluster assignment
 
@@ -22,22 +27,21 @@ class RotatedDataset(DatasetClustered):
 
         """
         if self.number_of_clusters == 1:
-            return torchvision.transforms.RandomRotation(degrees=[0, 0])
+            self.rotation_angle = 0
         elif self.number_of_clusters == 2:
-            rotation = 180 * self.cluster
-            # rotation = 180 * (1 - self.cluster)
-            logging.info(f"Cluster {self.cluster} applying rotation: {rotation}")
-            return torchvision.transforms.RandomRotation(degrees=[rotation, rotation])
+            self.rotation_angle = 180 
         elif self.number_of_clusters == 3 or self.number_of_clusters == 4:
-            return torchvision.transforms.RandomRotation(
-                degrees=[90 * self.cluster, 90 * self.cluster]
-            )
+            self.rotation_angle = 90 
         else:
             raise ValueError(
-                "Rotation transform not implemented for {} clusters".format(
-                    self.number_of_clusters
+                "Rotation transform not implemented for {} clusters".format(self.number_of_clusters)
                 )
-            )
+
+        cid = cluster_id if cluster_id is not None else self.cluster
+        rotation = self.rotation_angle * cid
+        logging.info(f"Cluster {cid} applying rotation: {rotation}")
+
+        return torchvision.transforms.RandomRotation(degrees=[rotation, rotation])
 
     def get_color_transform(self) -> torchvision.transforms.ColorJitter:
         if self.number_of_clusters == 2:
@@ -52,20 +56,28 @@ class RotatedDataset(DatasetClustered):
 
         """
         logging.info("Loading training set.")
-        trainset = self.get_dataset_object(train=True)
-        # try to overfit a small part (sanity check) !!
-        # trainset = torch.utils.data.Subset(trainset, range(0, 160))
-        # in case the val set is extracted from the train set
+        trainset_dict = {
+            cid : self.get_dataset_object(train=True, cluster_id=cid) for cid in range(self.number_of_clusters)
+        }
+
         if self.__validating__ and self.validation_source == "Train":
             logging.info("Extracting the validation set from the train set.")
-            self.validationset, trainset = torch.utils.data.random_split(
-                trainset,
-                [self.validation_size, 1 - self.validation_size],
-                torch.Generator().manual_seed(self.random_seed),
-            )
-            logging.info(f"The validation set has {len(self.validationset)} samples.")
+            updated_trainset_dict = {}
 
-        c_len = len(trainset)
+            for cid in range(self.number_of_clusters):
+                validationset, trainset = torch.utils.data.random_split(
+                    trainset_dict[cid],
+                    [self.validation_size, 1 - self.validation_size],
+                    torch.Generator().manual_seed(self.random_seed),
+                )
+                if cid == self.cluster:
+                    self.validationset = validationset
+                    logging.info(f"The validation set for cluster {cid} has {len(validationset)} samples.")
+                updated_trainset_dict[cid] = trainset
+            
+            trainset_dict = updated_trainset_dict
+
+        c_len = len(trainset_dict[self.cluster])
 
         if self.sizes is None:
             self.sizes = []
@@ -77,24 +89,32 @@ class RotatedDataset(DatasetClustered):
                 self.sizes[i][-1] += 1.0 - frac * node_in_cluster_i
             logging.debug("Size fractions: {}".format(self.sizes))
 
+        print(self.random_seed)
         cluster_sizes = [sum(sizes) for sizes in self.sizes]
-        self.cluster_data_partitioner = DataPartitioner(
-            trainset,
-            sizes=cluster_sizes,
-            seed=self.random_seed,
-        )
-        cluster_data = self.cluster_data_partitioner.use(self.cluster)
+        cluster_data_partitioner_dict = {
+            cid: DataPartitioner(
+                trainset_dict[cid],
+                sizes=cluster_sizes,
+                seed=self.random_seed,
+            ) for cid in range(self.number_of_clusters)
+        }
+        cluster_data_dict = {
+            cid: cluster_data_partitioner_dict[cid].use(cid) for cid in range(self.number_of_clusters)
+        }
 
-        cluster_fraction = sum(self.sizes[self.cluster])
-        data_sizes = [sizes / cluster_fraction for sizes in self.sizes[self.cluster]]
-        self.data_partitioner = DataPartitioner(
-            cluster_data,
-            sizes=data_sizes,
-            seed=self.random_seed,
-        )
+        data_sizes_dict = {
+            cid: [sizes / cluster_sizes[cid] for sizes in self.sizes[cid]]
+            for cid in range(self.number_of_clusters)
+        }
 
-        self.trainset = self.data_partitioner.use(self.dataset_id)
+        self.data_partitioner_dict = {
+            cid: DataPartitioner(cluster_data_dict[cid], sizes=data_sizes_dict[cid], seed=self.random_seed) 
+            for cid in range(self.number_of_clusters)
+        }
+
+        self.trainset = self.data_partitioner_dict[self.cluster].use(self.dataset_id)
         logging.info(f"The training set has {len(self.trainset)} samples.")
+
 
     def load_testset(self):
         """
@@ -102,19 +122,54 @@ class RotatedDataset(DatasetClustered):
 
         """
         logging.info("Loading testing set.")
-        self.testset = self.get_dataset_object(train=False)
-        # try to overfit a small part (sanity check) !!
-        # testset = torch.utils.data.Subset(testset, range(0, 10))
-
+        self.testset_dict = {
+            cid : self.get_dataset_object(train=False, cluster_id=cid) for cid in range(self.number_of_clusters)
+        }
+        
         if self.__validating__ and self.validation_source == "Test":
             logging.info("Extracting the validation set from the test set.")
-            self.validationset, self.testset = torch.utils.data.random_split(
-                self.testset,
-                [self.validation_size, 1 - self.validation_size],
-                torch.Generator().manual_seed(self.random_seed),
-            )
-            logging.info(f"The validation set has {len(self.validationset)} samples.")
-        logging.info(f"The test set has {len(self.testset)} samples.")
+            updated_testset_dict = {}
+
+            for cid in range(self.number_of_clusters):
+                validationset, testset = torch.utils.data.random_split(
+                    self.testset_dict[cid],
+                    [self.validation_size, 1 - self.validation_size],
+                    torch.Generator().manual_seed(self.random_seed),
+                )
+                if cid == self.cluster:
+                    self.validationset = validationset
+                    logging.info(f"The validation set for cluster {cid} has {len(validationset)} samples.")
+                updated_testset_dict[cid] = testset
+
+            self.testset_dict = updated_testset_dict
+
+        logging.info(f"The test set has {len(self.testset_dict[self.cluster])} samples.")
+
+
+    def get_trainset(self, batch_size=1, shuffle=False, node_id=None):
+        """
+        Function to get the training set
+        """
+        if self.__training__:
+            # to get the dataset of another node when performing a training attack
+            if node_id is not None:
+                cluster_id = self.clusters_idx[node_id]
+                dataset_id = sum([idx == cluster_id for idx in self.clusters_idx[:node_id]])
+                return DataLoader(self.data_partitioner_dict[cluster_id].use(dataset_id), batch_size, shuffle)
+            else:
+                return super().get_trainset(batch_size, shuffle)
+            
+        raise RuntimeError("Training set not initialized!")
+    
+    
+    def get_testset(self, cluster_id=None, attack=False) -> DataLoader:
+        """
+        Function to get the test set
+        """
+        if self.__testing__ or attack:
+            cid = cluster_id if cluster_id is not None else self.cluster
+            return DataLoader(self.testset_dict[cid], batch_size=self.test_batch_size)
+        raise RuntimeError("Test set not initialized!")
 
 
 class NullTransform:
