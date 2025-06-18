@@ -8,20 +8,21 @@ train_dir = ./eval/data/
 test_dir = ./eval/data/
 ; python list of fractions below
 sizes = [[1/16]*14, [1/16]*2]
-random_seed = 1122
+random_seed = 112233
 validation_source = Train
 ; Train or Test set used to extract the validation set only on CIFAR-10 and FEMNIST
 ; On FEMNIST if the validation set is extracted from the test set is the same for all the clients
 validation_size = 0.1
 ; fraction of the train or test set used as validation set, implemented only on CIFAR-10 and FEMNIST dataset
 number_of_clusters = 2
-top_k_acc = 2
+top_k_acc = 1
 
 [NODE]
-log_per_sample_loss = False
+log_per_sample_loss = False #True
 log_per_sample_pred_true = True
 do_all_reduce_models = True
-layers_sharing = False
+; share layer to boost mino
+layers_sharing = True
 graph_package = decentralizepy.graphs.Regular
 graph_class = Regular
 graph_degree = 4
@@ -52,5 +53,5 @@ addresses_filepath = /mnt/nfs/thiba/decentralizepy/tutorial/ip.json
 offset = 5000
 
 [SHARING]
-sharing_package = decentralizepy.sharing.CurrentModelSharing
-sharing_class = CurrentModelSharing
+sharing_package = decentralizepy.sharing.SharingAttackRandomLoss 
+sharing_class = SharingAttackRandomLoss 
